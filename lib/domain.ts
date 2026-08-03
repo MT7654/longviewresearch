@@ -127,6 +127,7 @@ export type EducationalOpinion = {
   dek: string;
   coverage: CoverageLevel;
   hypothesisStatus: "Exploratory" | "Partially supported" | "Mixed evidence" | "Challenged" | "Presently unanswerable";
+  valuationMethod: "Discounted cash flow" | "Earnings-multiple scenario" | null;
   modelRange: { low: number; midpoint: number; high: number } | null;
   impliedGrowth: number | null;
   thesis: string;

@@ -18,10 +18,11 @@ describe("educational publication controls", () => {
     expect(coverageLevel(sampleResearch.NVDA)).toBe("full");
   });
 
-  it("withholds a generic model range for the bank sample", () => {
+  it("selects an earnings-multiple scenario instead of industrial DCF for the bank sample", () => {
     const opinion = buildEducationalOpinion(sampleResearch["D05.SI"], { ...assumptions, fcfPerShare: 0 }, defaultHypothesis);
-    expect(opinion.modelRange).toBeNull();
-    expect(opinion.modelOpinion.toLowerCase()).toContain("bank");
+    expect(opinion.modelRange).not.toBeNull();
+    expect(opinion.valuationMethod).toBe("Earnings-multiple scenario");
+    expect(opinion.modelOpinion.toLowerCase()).toContain("earnings-multiple");
   });
 
   it("labels facts, calculations and model opinion separately", () => {

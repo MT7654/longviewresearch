@@ -158,6 +158,78 @@ async function fetchPublicFundamentals(symbol: string) {
   }
 }
 
+type SecUnit = { val?: number; end?: string; filed?: string; form?: string; fp?: string };
+type SecCompanyFacts = {
+  facts?: { "us-gaap"?: Record<string, { units?: Record<string, SecUnit[]> }> };
+};
+
+async function fetchSecFundamentals(symbol: string) {
+  const secHeaders = {
+    "User-Agent": "LongviewResearch/1.0 https://github.com/MT7654/longviewresearch",
+    Accept: "application/json",
+  };
+  try {
+    const tickersResponse = await fetch("https://www.sec.gov/files/company_tickers.json", {
+      headers: secHeaders,
+      signal: AbortSignal.timeout(6000),
+      next: { revalidate: 86400 },
+    });
+    if (!tickersResponse.ok) return { fundamentals: {}, asOf: "", modelReady: false, used: false };
+    const tickers = await tickersResponse.json() as Record<string, { cik_str?: number; ticker?: string }>;
+    const match = Object.values(tickers).find((entry) => entry.ticker?.toUpperCase() === symbol.toUpperCase());
+    if (!match?.cik_str) return { fundamentals: {}, asOf: "", modelReady: false, used: false };
+    const cik = String(match.cik_str).padStart(10, "0");
+    const factsResponse = await fetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, {
+      headers: secHeaders,
+      signal: AbortSignal.timeout(7000),
+      next: { revalidate: 21600 },
+    });
+    if (!factsResponse.ok) return { fundamentals: {}, asOf: "", modelReady: false, used: false };
+    const json = await factsResponse.json() as SecCompanyFacts;
+    const facts = json.facts?.["us-gaap"] ?? {};
+    const latestAnnual = (concepts: string[], unit: string) => {
+      const candidates = concepts.flatMap((concept) => facts[concept]?.units?.[unit] ?? [])
+        .filter((item) => item.form === "10-K" && Number.isFinite(item.val))
+        .sort((a, b) => String(a.filed ?? a.end).localeCompare(String(b.filed ?? b.end)));
+      return candidates.at(-1);
+    };
+    const cfo = latestAnnual(["NetCashProvidedByUsedInOperatingActivities"], "USD");
+    const capex = latestAnnual(["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsForAdditionsToPropertyPlantAndEquipment"], "USD");
+    const shares = latestAnnual(["WeightedAverageNumberOfDilutedSharesOutstanding"], "shares");
+    const eps = latestAnnual(["EarningsPerShareDiluted"], "USD/shares");
+    const revenueFacts = ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"]
+      .flatMap((concept) => facts[concept]?.units?.USD ?? [])
+      .filter((item) => item.form === "10-K" && Number.isFinite(item.val))
+      .sort((a, b) => String(a.filed ?? a.end).localeCompare(String(b.filed ?? b.end)));
+    const latestRevenue = revenueFacts.at(-1);
+    const previousRevenue = revenueFacts.filter((item) => item.end !== latestRevenue?.end).at(-1);
+    const operatingIncome = latestAnnual(["OperatingIncomeLoss"], "USD");
+    const debt = latestAnnual(["LongTermDebtAndFinanceLeaseObligationsCurrent", "LongTermDebtCurrent"], "USD");
+    const longDebt = latestAnnual(["LongTermDebtAndFinanceLeaseObligationsNoncurrent", "LongTermDebtNoncurrent"], "USD");
+    const cash = latestAnnual(["CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "CashAndCashEquivalentsAtCarryingValue"], "USD");
+    const equity = latestAnnual(["StockholdersEquity"], "USD");
+    const fundamentals: Fundamentals = {};
+    if (shares?.val && shares.val > 0) {
+      fundamentals.sharesOutstanding = shares.val;
+      if (cfo?.val !== undefined && capex?.val !== undefined && cfo.val - capex.val > 0) fundamentals.fcfPerShare = (cfo.val - capex.val) / shares.val;
+      fundamentals.netDebtPerShare = ((debt?.val ?? 0) + (longDebt?.val ?? 0) - (cash?.val ?? 0)) / shares.val;
+    }
+    if (eps?.val && eps.val > 0) fundamentals.eps = eps.val;
+    if (latestRevenue?.val && previousRevenue?.val && previousRevenue.val > 0) fundamentals.revenueGrowth = latestRevenue.val / previousRevenue.val - 1;
+    if (operatingIncome?.val && latestRevenue?.val) fundamentals.operatingMargin = operatingIncome.val / latestRevenue.val;
+    const investedCapital = (debt?.val ?? 0) + (longDebt?.val ?? 0) + (equity?.val ?? 0) - (cash?.val ?? 0);
+    if (operatingIncome?.val && investedCapital > 0) fundamentals.roic = operatingIncome.val * 0.79 / investedCapital;
+    return {
+      fundamentals,
+      asOf: cfo?.end ?? eps?.end ?? latestRevenue?.end ?? "",
+      modelReady: Boolean(fundamentals.fcfPerShare && fundamentals.eps),
+      used: Object.keys(fundamentals).length > 0,
+    };
+  } catch {
+    return { fundamentals: {}, asOf: "", modelReady: false, used: false };
+  }
+}
+
 const newsSources = (articles: PublicArticle[]): SourceRecord[] => articles.map((article) => ({
   label: article.title,
   publisher: article.publisher,
@@ -291,10 +363,16 @@ export async function loadSecurity(symbol: string): Promise<SecurityResearch> {
       type: String(meta.instrumentType ?? "Equity"),
       timezone: String(meta.exchangeTimezoneName ?? ""),
     };
-    const [fundamentalResult, articles] = await Promise.all([
+    const [publicFundamentals, secFundamentals, articles] = await Promise.all([
       fetchPublicFundamentals(normalized),
+      identity.country === "United States" ? fetchSecFundamentals(normalized) : Promise.resolve({ fundamentals: {}, asOf: "", modelReady: false, used: false }),
       fetchPublicArticles(normalized),
     ]);
+    const fundamentalResult = {
+      fundamentals: { ...secFundamentals.fundamentals, ...publicFundamentals.fundamentals },
+      asOf: publicFundamentals.asOf || secFundamentals.asOf,
+      modelReady: publicFundamentals.modelReady || secFundamentals.modelReady,
+    };
     const price = typeof meta.regularMarketPrice === "number" ? meta.regularMarketPrice : history.at(-1)?.close ?? null;
     const sources: SourceRecord[] = [{
       label: `${identity.name} public chart`,
@@ -315,6 +393,18 @@ export async function loadSecurity(symbol: string): Promise<SecurityResearch> {
         tier: "secondary",
         reliability: "medium",
         claim: "Automatically parsed public financial series; reconcile to the issuer's filing before relying on a model.",
+      });
+    }
+    if (secFundamentals.used) {
+      sources.push({
+        label: `${identity.name} SEC Company Facts`,
+        publisher: "U.S. Securities and Exchange Commission",
+        url: `https://www.sec.gov/edgar/browse/?CIK=${encodeURIComponent(normalized)}`,
+        asOf: secFundamentals.asOf || new Date().toISOString().slice(0, 10),
+        kind: "fundamentals",
+        tier: "primary",
+        reliability: "high",
+        claim: "Structured XBRL facts extracted from issuer filings and used to fill missing public financial fields.",
       });
     }
     return {

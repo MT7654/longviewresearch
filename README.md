@@ -104,6 +104,23 @@ The language model never owns the canonical arithmetic, data coverage decision, 
 
 The credential-free sample path is the most reproducible demo. Arbitrary-stock research uses public Yahoo Finance search, chart, and fundamental time-series endpoints with visible attribution and graceful failure. Hugging Face, Reddit, paid scrapers, and paid market-data APIs are not used.
 
+### Data inventory and model selection
+
+Before displaying a quant result, Longview inventories the resolved identity, price history, free cash flow, earnings and public coverage. The model selector then chooses:
+
+- **Discounted cash flow** when positive cash flow per share, earnings and a reference price are available;
+- **earnings-multiple scenarios** when earnings exist but industrial free cash flow is unavailable or unsuitable, including the bank-learning path;
+- **narrative concentration and historical-risk methods** when no defensible financial valuation input exists.
+
+The data pipeline uses annual and trailing four-quarter public financial series. For US-listed companies, the server also attempts to fill missing fields from the SEC Company Facts XBRL API and labels successful SEC records as primary evidence.
+
+Google Finance is not used as a hidden scraper. Google officially exposes `GOOGLEFINANCE` as a Google Sheets function, states that most international exchanges are unsupported, and states that historical data cannot be accessed through the Sheets API or Apps Script. It is therefore not a dependable server-side global-data API for this build.
+
+Official data references:
+
+- [Google Finance function and access limitations](https://support.google.com/docs/answer/3093281)
+- [SEC EDGAR application programming interfaces](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
+
 Gemini is optional and only called when the learner requests a model challenge. The server:
 
 - uses configurable primary and fallback models;

@@ -53,6 +53,7 @@ import type {
 import {
   buildEducationalOpinion,
   analyzeNarrative,
+  articleTheme,
   containsAdviceRequest,
   defaultHypothesis,
   learningPrompt,
@@ -114,6 +115,9 @@ type AnalysisSummary = {
   researchFinding: string;
   quantFinding: string;
   combinedFinding: string;
+  sectorSummary: string;
+  sectorMeaning: string;
+  sectorSignals: Array<{ theme: string; share: string; headlines: string[]; meaning: string }>;
   methods: Array<{
     name: string;
     strategy: string;
@@ -156,8 +160,10 @@ function buildAnalysisSummary(
     ? `${narrative.articleCount} current headlines from ${narrative.publisherCount} publishers concentrate most heavily on ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample). The scan maps what the public conversation emphasises; the linked articles still need to be checked against primary evidence.`
     : "The public scan returned too little current coverage to support a narrative conclusion. Absence of headlines is not evidence that the company is low-risk or unimportant.";
 
-  const quantFinding = valuation !== null && range
+  const quantFinding = opinion.valuationMethod === "Discounted cash flow" && valuation !== null && range
     ? `A five-year free-cash-flow DCF produces ${money(research, valuation)}, while seeded sensitivity produces a ${money(research, range.low)}–${money(research, range.high)} range. Reverse DCF estimates that the current price requires ${reverseGrowth === null ? "an unresolved" : `${(reverseGrowth * 100).toFixed(1)}% annual`} free-cash-flow growth under the displayed discount and terminal-growth assumptions.`
+    : opinion.valuationMethod === "Earnings-multiple scenario" && range
+      ? `The extracted earnings data could not support an industrial-company DCF, so Longview selected an earnings-multiple scenario. The resulting range is ${money(research, range.low)}–${money(research, range.high)}, with a midpoint of ${money(research, range.midpoint)}. This answers how price compares under a stated earnings multiple; it does not establish intrinsic value.`
     : risk
       ? `No defensible financial valuation could be run. The supported market-behaviour model uses ${research.priceHistory.length} ${research.historyInterval ?? "monthly"} observations and measures ${(risk.volatility * 100).toFixed(1)}% annualised volatility with a ${(risk.maxDrawdown * 100).toFixed(1)}% maximum observed drawdown. These are historical descriptors, not fair value.`
       : "Neither model-ready fundamentals nor enough price history were available. Longview limits the quantitative conclusion to coverage and narrative measurements.";
@@ -166,7 +172,30 @@ function buildAnalysisSummary(
     ? `${posture}. Secondary research supplies context and counter-questions; the valuation posture comes only from the deterministic model and its visible assumptions.`
     : `${posture}. The evidence can describe attention and observed market behaviour, but it cannot establish whether the security is overvalued or undervalued.`;
 
-  const methods: AnalysisSummary["methods"] = valuation !== null && range ? [
+  const themeMeanings: Record<string, string> = {
+    "Sector demand": "Demand headlines can indicate a changing addressable market, but they matter financially only if they translate into company revenue, pricing or backlog.",
+    "Capital & valuation": "Capital and valuation coverage shows how expectations are being framed. It can raise the burden of proof without establishing fair value.",
+    "Execution": "Execution coverage points to delivery, production or contract milestones that may affect revenue timing, margins and cash conversion.",
+    "Policy & regulation": "Policy coverage can change accessible demand, costs, approvals or competitive conditions and should be traced to official decisions.",
+    "Competition": "Competition coverage matters when it changes market share, pricing power, customer concentration or investment requirements.",
+    "Attention & narrative": "Attention can amplify price volatility and expectations, but popularity is not operating evidence.",
+    "General company news": "General coverage provides context but must be decomposed into testable effects on demand, margins, capital or risk.",
+  };
+  const sectorSignals = narrative.themes.slice(0, 3).map((theme) => ({
+    theme: theme.theme,
+    share: `${Math.round(theme.count / Math.max(1, narrative.articleCount) * 100)}%`,
+    headlines: (research.articles ?? [])
+      .filter((article) => articleTheme(article.title) === theme.theme)
+      .slice(0, 2)
+      .map((article) => article.title),
+    meaning: themeMeanings[theme.theme] ?? themeMeanings["General company news"],
+  }));
+  const sectorSummary = sectorSignals.length
+    ? `The current coverage is led by ${sectorSignals.map((signal) => `${signal.theme.toLowerCase()} (${signal.share})`).join(", ")}. Across ${narrative.publisherCount} publishers, this is a map of the sector conversation—not a consensus forecast.`
+    : "The scan did not return enough current coverage to summarise a sector narrative.";
+  const sectorMeaning = sectorSignals[0]?.meaning ?? "No sector inference should be made from an empty coverage sample.";
+
+  const methods: AnalysisSummary["methods"] = opinion.valuationMethod === "Discounted cash flow" && valuation !== null && range ? [
     {
       name: "Reverse DCF",
       strategy: "Expectations investing",
@@ -207,6 +236,39 @@ function buildAnalysisSummary(
       interpretation: "Momentum, quality, value and volatility are descriptors used to compare characteristics.",
       limitation: "Transparent proxies are not a full factor regression or trading signal.",
     },
+  ] : opinion.valuationMethod === "Earnings-multiple scenario" && range ? [
+    {
+      name: "Earnings-multiple scenario",
+      strategy: "Relative valuation",
+      question: "What price range follows from reported earnings and a stated comparison multiple?",
+      result: `${money(research, range.low)}–${money(research, range.high)}`,
+      interpretation: postureDetail,
+      limitation: "The multiple must be tested against growth, capital needs, cyclicality and suitable peers.",
+    },
+    {
+      name: "Reverse P/E",
+      strategy: "Expectations mapping",
+      question: "What earnings multiple is embedded in the current market price?",
+      result: research.price !== null && research.fundamentals.eps ? `${(research.price / research.fundamentals.eps).toFixed(1)}× current P/E` : "Unavailable",
+      interpretation: "The embedded multiple shows how much investors currently pay for each unit of reported earnings.",
+      limitation: "P/E ignores balance-sheet quality and can mislead when earnings are cyclical or unusually high or low.",
+    },
+    {
+      name: "Historical risk",
+      strategy: "Market-behaviour statistics",
+      question: "How has the available price series behaved?",
+      result: risk ? `${(risk.volatility * 100).toFixed(1)}% volatility · ${(risk.maxDrawdown * 100).toFixed(1)}% max drawdown` : "Not enough history",
+      interpretation: "The statistics describe realised variation and loss from a prior peak.",
+      limitation: "Historical risk is not a fair-value model or future-return forecast.",
+    },
+    {
+      name: "Model eligibility",
+      strategy: "Quantitative model governance",
+      question: "Why was this model selected instead of DCF?",
+      result: "Earnings available · industrial FCF unsuitable or unavailable",
+      interpretation: "The model selector uses the evidence that exists and avoids forcing an incompatible cash-flow definition.",
+      limitation: "A fuller bank analysis should add book value, sustainable ROE, capital and credit-loss scenarios.",
+    },
   ] : [
     {
       name: "Public coverage map",
@@ -242,7 +304,7 @@ function buildAnalysisSummary(
     },
   ];
 
-  return { posture, postureDetail, researchFinding, quantFinding, combinedFinding, methods };
+  return { posture, postureDetail, researchFinding, quantFinding, combinedFinding, sectorSummary, sectorMeaning, sectorSignals, methods };
 }
 
 function buildContextualQuiz(
@@ -477,8 +539,8 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
   function answerQuiz(index: number, optionIndex: number) {
     const nextQuiz = { ...quiz, [index]: optionIndex };
     setQuiz(nextQuiz);
-    const allCorrect = activeQuizItems.every((item, itemIndex) => nextQuiz[itemIndex] === item.correct);
-    if (allCorrect) setOpinionUnlocked(true);
+    const completed = activeQuizItems.every((_, itemIndex) => nextQuiz[itemIndex] !== undefined);
+    if (completed) setOpinionUnlocked(true);
   }
 
   function resetSession() {
@@ -508,7 +570,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           terminalGrowth: assumptions.terminalGrowth,
           fcfPerShare: assumptions.fcfPerShare,
           coverage: research.coverage,
-          analysisMode: valuation === null ? "narrative" : "valuation",
+          analysisMode: opinion?.valuationMethod ? "valuation" : "narrative",
           company: research.identity.name,
           articleCount: narrative.articleCount,
           publisherCount: narrative.publisherCount,
@@ -528,10 +590,10 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
     } catch {
       setTutor({
         mode: "deterministic",
-        summary: valuation === null
+        summary: !opinion?.valuationMethod
           ? "The optional language tutor is unavailable. The deterministic tutor can still challenge the public narrative and explain why a financial valuation is withheld."
           : "The optional language tutor is unavailable, but the calculation and learning path remain complete.",
-        pressurePoints: valuation === null ? [
+        pressurePoints: !opinion?.valuationMethod ? [
           `${narrative.articleCount} sampled headlines are secondary evidence, not verified operating facts.`,
           `${narrative.publisherCount} publishers may still repeat the same underlying story.`,
           "Reported model-ready cash flows are required before a DCF can be interpreted.",
@@ -540,7 +602,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           "Test a wider discount-rate range.",
           "Check whether terminal value dominates the result.",
         ],
-        lesson: valuation === null
+        lesson: !opinion?.valuationMethod
           ? "Quant research can measure narrative breadth, concentration and price behaviour without pretending those measures are a financial valuation."
           : "A model is useful when its assumptions can be inspected, challenged and reproduced.",
       });
@@ -570,6 +632,13 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
   const formatMoney = (value: number | null) =>
     value === null || !Number.isFinite(value) ? "Unavailable" : `${currency} ${value.toFixed(value >= 100 ? 0 : 2)}`;
   const prompt = learningPrompt(profile, research.identity.name);
+  const hasFinancialModel = opinion.modelRange !== null;
+  const earningsScenario = opinion.modelRange ? [
+    { label: "Low", value: opinion.modelRange.low },
+    { label: "Base", value: opinion.modelRange.midpoint },
+    { label: "High", value: opinion.modelRange.high },
+    ...(research.price === null ? [] : [{ label: "Price", value: research.price }]),
+  ] : [];
 
   return (
     <main className="learning-workspace">
@@ -717,29 +786,30 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
             <Lightbulb />
             <div><small>YOUR STARTING POINT</small><strong>{prompt.startingPoint}</strong><p>{prompt.emphasis}</p></div>
           </div>
+          <ModelSelectionPanel research={research} opinion={opinion} />
           <div className="roadmap-grid">
             <RoadmapCard number="01" icon={<Database />} title="Verify the evidence boundary" detail="Separate available observations from missing fundamentals and demonstration data." learning="Source quality before conclusions" />
             <RoadmapCard number="02" icon={<Scale />} title="Build the counter-case" detail="Look for the strongest reason the opening idea could be incomplete." learning="Falsification, not confirmation" />
             <RoadmapCard
               number="03"
               icon={<Binary />}
-              title={valuation !== null ? "Map market expectations" : "Map the public narrative"}
-              detail={valuation !== null ? "Use reverse DCF to solve for growth implied by price and assumptions." : "Group current headlines by sector, capital, execution, policy and competition themes."}
-              learning={valuation !== null ? "Price is not the same as value" : "Attention is not the same as evidence"}
+              title={opinion.valuationMethod === "Discounted cash flow" ? "Map cash-flow expectations" : opinion.valuationMethod === "Earnings-multiple scenario" ? "Map earnings expectations" : "Map the public narrative"}
+              detail={opinion.valuationMethod === "Discounted cash flow" ? "Use reverse DCF to solve for growth implied by price and assumptions." : opinion.valuationMethod === "Earnings-multiple scenario" ? "Use reported earnings and a stated comparison multiple because industrial free cash flow is unavailable or unsuitable." : "Group current headlines by sector, capital, execution, policy and competition themes."}
+              learning={hasFinancialModel ? "Price is not the same as value" : "Attention is not the same as evidence"}
             />
             <RoadmapCard
               number="04"
               icon={<FlaskConical />}
-              title={valuation !== null ? "Stress the model" : "Measure what the data supports"}
-              detail={valuation !== null ? "Run scenarios, systematic factor proxies and reproducible uncertainty." : "Calculate source diversity, theme entropy and available price-history risk without inventing fundamentals."}
-              learning={valuation !== null ? "Ranges before false precision" : "Use a smaller method when evidence is smaller"}
+              title={hasFinancialModel ? "Stress the selected model" : "Measure what the data supports"}
+              detail={hasFinancialModel ? "Compare the selected valuation range with systematic characteristics and historical risk." : "Calculate source diversity, theme entropy and available price-history risk without inventing fundamentals."}
+              learning={hasFinancialModel ? "Ranges before false precision" : "Use a smaller method when evidence is smaller"}
             />
             <RoadmapCard number="05" icon={<BookOpen />} title="Publish and reflect" detail="Separate facts, calculations, interpretation and Longview's model opinion." learning="Understand before exporting" />
           </div>
           <InstitutionalLens
             institutional="An analyst defines the question, establishes an evidence hierarchy and chooses methods that fit the business before interpreting results."
             plain="Longview will not force every company through the same formula or quietly fill missing data."
-            limitation={valuation !== null ? "Automatic public financial series should be reconciled to issuer filings before interpretation." : "This path can map public coverage and market behaviour, but financial valuation remains withheld until reported inputs exist."}
+            limitation={hasFinancialModel ? "Automatic public financial series should be reconciled to issuer filings before interpretation." : "This path can map public coverage and market behaviour, but financial valuation remains withheld until reported inputs exist."}
           />
           <StageContinue label="Continue to the evidence desk" onClick={() => advance(2)} />
         </StageShell>
@@ -752,6 +822,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           intro="Each item is labelled by what it is, where it came from and whether it supports, challenges or limits the opening idea."
         >
           <HypothesisLedger profile={profile} opinion={opinion} />
+          <ModelSelectionPanel research={research} opinion={opinion} />
           <NarrativeBriefing narrative={narrative} articles={research.articles ?? []} />
           <div className="evidence-grid">
             {opinion.evidence.map((item) => (
@@ -797,11 +868,16 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
         >
           <QuantMethodGuide analysis={analysis} />
           <div className="quant-readout-grid">
-            {valuation !== null ? <>
+            {opinion.valuationMethod === "Discounted cash flow" && valuation !== null ? <>
               <QuantReadout label="Market-implied FCF growth" value={reverseGrowth === null ? "Unavailable" : `${(reverseGrowth * 100).toFixed(1)}%`} detail="Solved backwards from the reference price" tone="lime" />
               <QuantReadout label="Scenario DCF" value={formatMoney(valuation)} detail="Mechanical result under displayed defaults" tone="blue" />
               <QuantReadout label="Model distribution" value={`${formatMoney(simulation.p10)}–${formatMoney(simulation.p90)}`} detail="P10–P90 across seeded assumptions" tone="amber" />
               <QuantReadout label="Relative comparison" value={formatMoney(relative)} detail={`${assumptions.targetPe.toFixed(1)}× comparison multiple`} tone="white" />
+            </> : opinion.valuationMethod === "Earnings-multiple scenario" && opinion.modelRange ? <>
+              <QuantReadout label="Selected valuation model" value="P/E scenario" detail="Chosen because earnings exist while industrial FCF is unavailable or unsuitable" tone="lime" />
+              <QuantReadout label="Reported EPS" value={assumptions.eps.toFixed(2)} detail="Automatically extracted earnings per share" tone="blue" />
+              <QuantReadout label="Model range" value={`${formatMoney(opinion.modelRange.low)}–${formatMoney(opinion.modelRange.high)}`} detail="Low-to-high earnings-multiple scenario" tone="amber" />
+              <QuantReadout label="Embedded P/E" value={research.price ? `${(research.price / assumptions.eps).toFixed(1)}×` : "Unavailable"} detail="Reference price divided by reported EPS" tone="white" />
             </> : <>
               <QuantReadout label="Public coverage sample" value={`${narrative.articleCount}`} detail={`Headlines from ${narrative.publisherCount} publishers`} tone="lime" />
               <QuantReadout label="Source diversity" value={`${Math.round(narrative.sourceDiversity * 100)}%`} detail="Distinct publishers divided by sampled headlines" tone="blue" />
@@ -811,7 +887,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           </div>
 
           <div className="quant-chart-grid">
-            {valuation !== null ? (
+            {opinion.valuationMethod === "Discounted cash flow" && valuation !== null ? (
               <article className="quant-chart">
                 <header><span>UNCERTAINTY DISTRIBUTION</span><strong>1,600 reproducible simulations</strong><small>Not a forecast probability</small></header>
                 <ResponsiveContainer width="100%" height={260}>
@@ -823,6 +899,19 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
                     <Tooltip contentStyle={{ background: "#111916", border: "1px solid #34423d", color: "#fff" }} />
                     <Area type="monotone" dataKey="count" stroke="#c7ff4a" fill="url(#learningSimulation)" strokeWidth={2} />
                   </AreaChart>
+                </ResponsiveContainer>
+              </article>
+            ) : opinion.valuationMethod === "Earnings-multiple scenario" ? (
+              <article className="quant-chart">
+                <header><span>EARNINGS-MULTIPLE SCENARIO</span><strong>Low, base and high model values versus price</strong><small>Conditional comparison</small></header>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={earningsScenario}>
+                    <CartesianGrid stroke="#2a3631" vertical={false} />
+                    <XAxis dataKey="label" stroke="#93a099" tickLine={false} axisLine={false} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ background: "#111916", border: "1px solid #34423d", color: "#fff" }} />
+                    <Bar dataKey="value" fill="#c7ff4a" radius={[3, 3, 0, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
               </article>
             ) : (
@@ -887,7 +976,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
             </article>
           </div>
 
-          {valuation !== null ? (
+          {opinion.valuationMethod === "Discounted cash flow" && valuation !== null ? (
             <details className="advanced-lab">
               <summary><FlaskConical /> Inspect the advanced sensitivity lab <ChevronRight /></summary>
               <div className="advanced-grid">
@@ -901,6 +990,15 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
                 <SensitivityMatrix assumptions={assumptions} />
               </div>
             </details>
+          ) : opinion.valuationMethod === "Earnings-multiple scenario" && opinion.modelRange ? (
+            <section className="earnings-model-panel">
+              <Scale />
+              <div>
+                <span>SELECTED MODEL · EARNINGS-MULTIPLE SCENARIO</span>
+                <h3>Longview found usable earnings, but not a suitable industrial free-cash-flow model.</h3>
+                <p>The engine therefore compares reported EPS with a transparent low, base and high P/E range. For banks, this is only an initial cross-check: book value, sustainable return on equity, regulatory capital and credit quality remain essential follow-up work.</p>
+              </div>
+            </section>
           ) : (
             <section className="model-boundary-panel">
               <AlertTriangle />
@@ -934,8 +1032,8 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
 
           <InstitutionalLens
             institutional="Quant researchers use multiple models because every method answers a narrower question and carries different failure modes."
-            plain={valuation !== null ? "The range is useful because it shows how quickly the answer changes when assumptions move." : "When financial inputs are missing, quant work can still measure source breadth, topic concentration and observed price behaviour."}
-            limitation={valuation !== null ? "Factor scores are transparent educational proxies, not licensed institutional signals or a complete factor regression." : "Headline classification is a research triage tool. It is not sentiment truth, a company fundamental or a trading signal."}
+            plain={hasFinancialModel ? "The selected range is useful because it makes the model choice and its assumptions inspectable." : "When financial inputs are missing, quant work can still measure source breadth, topic concentration and observed price behaviour."}
+            limitation={hasFinancialModel ? "Factor scores and valuation ranges are transparent educational proxies, not licensed institutional signals or recommendations." : "Headline classification is a research triage tool. It is not sentiment truth, a company fundamental or a trading signal."}
             dark
           />
           <StageContinue label="Continue to the opinion preview" onClick={() => advance(4)} dark />
@@ -949,6 +1047,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           intro={opinion.dek}
         >
           <OpinionHeader research={research} opinion={opinion} analysis={analysis} formatMoney={formatMoney} />
+          <SectorSynthesis analysis={analysis} />
           <div className="opinion-columns">
             <article className="opinion-thesis">
               <span>THE THESIS</span>
@@ -1015,9 +1114,10 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           </div>
 
           <DebriefFindings analysis={analysis} />
+          <SectorSynthesis analysis={analysis} educational />
 
           <div className="lesson-grid">
-            {valuation !== null ? <>
+            {hasFinancialModel ? <>
               <article><Gauge /><span>EXPECTATIONS</span><h3>Price can be translated into assumptions.</h3><p>Reverse DCF asks what must be true without claiming that it will become true.</p></article>
               <article><Scale /><span>VALUATION</span><h3>Business quality and price are different questions.</h3><p>Strong evidence about a company can coexist with demanding expectations.</p></article>
               <article><BarChart3 /><span>UNCERTAINTY</span><h3>A range is more honest than false precision.</h3><p>Model disagreement reveals where judgement and missing information matter.</p></article>
@@ -1055,13 +1155,13 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           </section>
 
           {quizComplete && (
-            <div className={score === activeQuizItems.length ? "unlock-banner unlocked" : "unlock-banner"}>
+            <div className="unlock-banner unlocked">
               {score === activeQuizItems.length ? <CheckCircle2 /> : <CircleHelp />}
               <div>
-                <small>{score}/3 CONCEPTS UNDERSTOOD</small>
-                <h3>{score === activeQuizItems.length ? "The complete Educational Opinion Piece is unlocked." : "Revisit the highlighted explanations and try again."}</h3>
+                <small>{score}/3 CHECKS CORRECT · DEBRIEF COMPLETE</small>
+                <h3>{score === activeQuizItems.length ? "The complete Educational Opinion Piece is unlocked." : "The opinion is unlocked. Review the highlighted explanations as you read it."}</h3>
               </div>
-              {score === activeQuizItems.length && <button type="button" onClick={() => advance(4)}>Read and export the complete opinion <ArrowRight /></button>}
+              <button type="button" onClick={() => advance(4)}>Read and export the complete opinion <ArrowRight /></button>
             </div>
           )}
 
@@ -1196,6 +1296,60 @@ function QuantMethodGuide({ analysis }: { analysis: AnalysisSummary }) {
   );
 }
 
+function ModelSelectionPanel({ research, opinion }: { research: SecurityResearch; opinion: EducationalOpinion }) {
+  const data = [
+    { label: "Identity", value: research.coverage.identity ? research.identity.symbol : "Missing", available: research.coverage.identity },
+    { label: "Price history", value: `${research.priceHistory.length} observations`, available: research.coverage.history },
+    { label: "Free cash flow", value: research.fundamentals.fcfPerShare ? "Extracted" : "Missing / unsuitable", available: Boolean(research.fundamentals.fcfPerShare) },
+    { label: "Earnings", value: research.fundamentals.eps ? `${research.fundamentals.eps.toFixed(2)} EPS` : "Missing", available: Boolean(research.fundamentals.eps) },
+    { label: "Public coverage", value: `${research.articles?.length ?? 0} headlines`, available: Boolean(research.articles?.length) },
+  ];
+  const reason = opinion.valuationMethod === "Discounted cash flow"
+    ? "Positive free cash flow per share, earnings, price and sufficient history support DCF, reverse DCF, relative valuation and risk methods."
+    : opinion.valuationMethod === "Earnings-multiple scenario"
+      ? "Reported earnings are available, but industrial free cash flow is missing or unsuitable. Longview therefore selects an earnings-multiple scenario plus risk methods."
+      : "No model-ready cash flow or earnings basis was found. Longview selects narrative concentration and historical market-behaviour methods only.";
+  return (
+    <section className="model-selection-panel">
+      <header>
+        <div><Database /><span>BACKEND DATA INVENTORY</span></div>
+        <strong>Selected model: {opinion.valuationMethod ?? "Narrative + historical risk only"}</strong>
+      </header>
+      <div className="model-data-grid">
+        {data.map((item) => <p className={item.available ? "available" : "missing"} key={item.label}><small>{item.label}</small><strong>{item.value}</strong></p>)}
+      </div>
+      <footer><strong>Why this model was selected</strong><p>{reason}</p></footer>
+    </section>
+  );
+}
+
+function SectorSynthesis({ analysis, educational = false }: { analysis: AnalysisSummary; educational?: boolean }) {
+  return (
+    <section className={`sector-synthesis ${educational ? "sector-synthesis-educational" : ""}`}>
+      <header>
+        <div><Newspaper /><span>{educational ? "EDUCATIONAL SECTOR BREAKDOWN" : "SECTOR AND MARKET SUMMARY"}</span></div>
+        <h3>{analysis.sectorSummary}</h3>
+        <p><strong>What this means:</strong> {analysis.sectorMeaning}</p>
+      </header>
+      {analysis.sectorSignals.length > 0 && (
+        <div>
+          {analysis.sectorSignals.map((signal) => (
+            <article key={signal.theme}>
+              <small>{signal.share} OF SAMPLED COVERAGE</small>
+              <h4>{signal.theme}</h4>
+              <p>{signal.meaning}</p>
+              {signal.headlines.length > 0 && <ul>{signal.headlines.map((headline) => <li key={headline}>{headline}</li>)}</ul>}
+            </article>
+          ))}
+        </div>
+      )}
+      <footer>{educational
+        ? "Finance lens: translate each narrative into a testable effect on revenue, margins, cash flow, capital requirements or risk—then verify it against primary disclosures."
+        : "This summary synthesises headline metadata. It describes the public conversation and its possible financial transmission channels; it does not verify the underlying claims."}</footer>
+    </section>
+  );
+}
+
 function DebriefFindings({ analysis }: { analysis: AnalysisSummary }) {
   return (
     <section className="debrief-findings">
@@ -1232,7 +1386,7 @@ function OpinionHeader({
         <p>Model version 1.0 · {research.asOf} · {opinion.coverage} coverage</p>
       </div>
       <div className="opinion-range">
-        <small>VALUATION POSTURE</small>
+        <small>VALUATION POSTURE · {opinion.valuationMethod ?? "NO FINANCIAL MODEL"}</small>
         <strong>{analysis.posture}</strong>
         <span>{analysis.postureDetail}</span>
         {opinion.modelRange && <i>Model band: {formatMoney(opinion.modelRange.low)}–{formatMoney(opinion.modelRange.high)}</i>}
@@ -1279,6 +1433,7 @@ function FullOpinion({
         <h3>{analysis.posture}</h3>
         <p>{analysis.postureDetail}</p>
       </section>
+      <SectorSynthesis analysis={analysis} />
 
       <section className="opinion-body-grid">
         <div><span>THESIS</span><p>{opinion.thesis}</p></div>
@@ -1329,14 +1484,22 @@ function FullOpinion({
       </section>
 
       <section className="opinion-assumptions">
-        <span>{opinion.modelRange ? "MODEL ASSUMPTIONS" : "MODEL BOUNDARY"}</span>
-        {opinion.modelRange ? (
+        <span>{opinion.valuationMethod ? "MODEL ASSUMPTIONS" : "MODEL BOUNDARY"}</span>
+        {opinion.valuationMethod === "Discounted cash flow" ? (
           <div>
             <p><small>FCF / share</small><strong>{assumptions.fcfPerShare}</strong></p>
             <p><small>Growth</small><strong>{(assumptions.growthRate * 100).toFixed(1)}%</strong></p>
             <p><small>Discount rate</small><strong>{(assumptions.discountRate * 100).toFixed(1)}%</strong></p>
             <p><small>Terminal growth</small><strong>{(assumptions.terminalGrowth * 100).toFixed(1)}%</strong></p>
             <p><small>Forecast years</small><strong>{assumptions.forecastYears}</strong></p>
+          </div>
+        ) : opinion.valuationMethod === "Earnings-multiple scenario" && opinion.modelRange ? (
+          <div>
+            <p><small>Reported EPS</small><strong>{assumptions.eps.toFixed(2)}</strong></p>
+            <p><small>Low value</small><strong>{formatMoney(opinion.modelRange.low)}</strong></p>
+            <p><small>Base value</small><strong>{formatMoney(opinion.modelRange.midpoint)}</strong></p>
+            <p><small>High value</small><strong>{formatMoney(opinion.modelRange.high)}</strong></p>
+            <p><small>Model</small><strong>P/E scenario</strong></p>
           </div>
         ) : <p className="withheld-explanation">Financial valuation was withheld because model-ready reported cash flow, earnings or suitable business-model inputs were unavailable. Narrative and price-history calculations remain descriptive.</p>}
       </section>

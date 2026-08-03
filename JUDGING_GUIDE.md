@@ -166,6 +166,8 @@ The LLM cannot:
 
 - Exact global listing and currency resolution.
 - Explicit complete, partial, and unsupported coverage states.
+- Visible backend data inventory and automatic DCF, earnings-scenario, or narrative/risk model selection.
+- Annual, trailing four-quarter and optional SEC Company Facts extraction with graceful fallback.
 - Numerical reverse solving and seeded Monte Carlo reproducibility.
 - Formula, sample, policy-layer, and advice-language tests.
 - Server-side key handling, bounded retry, cache, cooldown, and model fallback.

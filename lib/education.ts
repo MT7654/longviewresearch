@@ -238,6 +238,20 @@ function genericEvidence(research: SecurityResearch, assumptions: ValuationAssum
       asOf: research.asOf,
     });
   }
+  if (implied === null && assumptions.eps > 0) {
+    const bankLike = /\b(bank|banking|financial institution)\b/i.test(`${research.identity.name} ${research.identity.type}`);
+    const multiple = bankLike ? 12 : assumptions.targetPe;
+    items.push({
+      id: "earnings-scenario",
+      layer: "Deterministic calculation",
+      tier: "Methodology",
+      direction: "context",
+      title: "Earnings-multiple scenario selected",
+      detail: `Reported EPS of ${assumptions.eps.toFixed(2)} and a transparent ${multiple.toFixed(1)}× base multiple produce a midpoint of ${research.identity.currency} ${(assumptions.eps * multiple).toFixed(2)}. This is a relative-value scenario, not intrinsic value or a recommended target.`,
+      sourceLabel: "Longview model-selection engine",
+      asOf: research.asOf,
+    });
+  }
 
   if (risk) {
     items.push({
@@ -293,7 +307,20 @@ export function buildEducationalOpinion(
   const impliedGrowth = research.price ? reverseDcfGrowth(research.price, assumptions) : null;
   const context = sampleContext[research.identity.symbol];
   const narrative = analyzeNarrative(research.articles ?? [], profile.hypothesis);
-  const modelRange = simulation ? { low: simulation.p10, midpoint: simulation.median, high: simulation.p90 } : null;
+  const bankLike = /\b(bank|banking|financial institution)\b/i.test(`${research.identity.name} ${research.identity.type}`);
+  const earningsMultiple = bankLike ? 12 : assumptions.targetPe;
+  const earningsMidpoint = value === null && assumptions.eps > 0 ? assumptions.eps * earningsMultiple : null;
+  const earningsRange = earningsMidpoint === null ? null : {
+    low: earningsMidpoint * 0.8,
+    midpoint: earningsMidpoint,
+    high: earningsMidpoint * 1.2,
+  };
+  const valuationMethod: EducationalOpinion["valuationMethod"] = simulation
+    ? "Discounted cash flow"
+    : earningsRange
+      ? "Earnings-multiple scenario"
+      : null;
+  const modelRange = simulation ? { low: simulation.p10, midpoint: simulation.median, high: simulation.p90 } : earningsRange;
 
   let modelOpinion = "The available evidence is too thin to support either a financial valuation or a useful narrative assessment.";
   let status: EducationalOpinion["hypothesisStatus"] = profile.hypothesis.trim() ? "Presently unanswerable" : "Exploratory";
@@ -302,7 +329,7 @@ export function buildEducationalOpinion(
   let variablesToMonitor = context?.monitor ?? ["Primary company disclosures", "Reported cash-flow evidence", "Sector demand", "Data coverage"];
   let unresolvedQuestions = context?.questions ?? ["Can the exact listing be verified?", "Which valuation method fits this business?", "What evidence could falsify the opening thesis?"];
 
-  if (modelRange && impliedGrowth !== null) {
+  if (valuationMethod === "Discounted cash flow" && modelRange && impliedGrowth !== null) {
     const demanding = impliedGrowth > 0.2;
     const pricePosture = research.price !== null && research.price > modelRange.high
       ? "above"
@@ -329,9 +356,14 @@ export function buildEducationalOpinion(
         "Which discount rate and comparison multiple best fit the company’s risk and growth?",
       ];
     }
-  } else if (research.identity.symbol === "D05.SI") {
-    modelOpinion = "The most important educational conclusion is methodological: a bank should not be forced through an industrial-company free-cash-flow model.";
-    status = "Presently unanswerable";
+  } else if (valuationMethod === "Earnings-multiple scenario" && modelRange) {
+    const pricePosture = research.price !== null && research.price > modelRange.high
+      ? "above"
+      : research.price !== null && research.price < modelRange.low
+        ? "below"
+        : "inside";
+    modelOpinion = `${bankLike ? "Because industrial free cash flow is unsuitable for this bank, Longview selected an earnings-multiple scenario instead." : "Reported earnings support an earnings-multiple scenario even though a cash-flow DCF is unavailable."} The reference price sits ${pricePosture} a ${earningsMultiple.toFixed(1)}× base-P/E range of ${research.identity.currency} ${modelRange.low.toFixed(2)}–${modelRange.high.toFixed(2)}. This is a conditional comparison; book value, sustainable return on equity and credit quality still require primary-source review.`;
+    status = pricePosture === "inside" ? "Partially supported" : "Mixed evidence";
   } else if (narrative.articleCount) {
     thesis = `${narrative.articleCount} recent public headlines from ${narrative.publisherCount} publishers provide a live macro lens. Coverage is most concentrated in ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample).`;
     const challenging = (research.articles ?? []).find((article) => articleDirection(article.title) === "challenges");
@@ -358,13 +390,16 @@ export function buildEducationalOpinion(
 
   return {
     title: `${research.identity.name} through a quant lens`,
-    dek: modelRange
+    dek: valuationMethod === "Discounted cash flow"
       ? `An independent educational opinion combining ${narrative.articleCount} current public headlines, market history and deterministic cash-flow, relative-value and risk models.`
+      : valuationMethod === "Earnings-multiple scenario"
+        ? `An independent educational opinion combining available public evidence, market history and an earnings-multiple scenario selected from the extracted data.`
       : narrative.articleCount
       ? `An independent educational opinion built from ${narrative.articleCount} current public headlines, available market history and explicitly withheld financial valuation.`
       : "An independent educational opinion that separates observed facts, deterministic calculations and model interpretation.",
     coverage,
     hypothesisStatus: status,
+    valuationMethod,
     modelRange,
     impliedGrowth,
     thesis,

@@ -112,3 +112,63 @@
 @media(max-width:1000px){.quant-method-guide>header{grid-template-columns:1fr}.opinion-explainer>div,.debrief-findings>div{grid-template-columns:1fr}.opinion-methods>article{grid-template-columns:1fr 1fr}.opinion-methods>article>div{grid-column:1/-1}.opinion-evidence-explained>article{grid-template-columns:1fr}.opinion-evidence-explained>article footer{grid-column:1}}
 @media(max-width:760px){.journey-nav{position:static}.quant-method-guide>header h3{font-size:30px}.opinion-explainer>header h3,.opinion-methods>header h3,.opinion-evidence-explained>header h3{font-size:28px}.opinion-methods>article{grid-template-columns:1fr}.opinion-methods>article>div{grid-column:auto}.debrief-findings>header h2{font-size:34px}}
 @media print{.opinion-executive-reading,.opinion-explainer,.opinion-methods,.opinion-evidence-explained{break-inside:avoid}}
+
+/* Readability pass: two-step increase across the complete research journey */
+.learning-workspace{font-size:18px}
+.journey-nav strong{font-size:13px}.journey-nav small{font-size:12px}
+.security-identity small,.security-reference small,.security-reference i,.coverage-seal small{font-size:12px}
+.coverage-seal strong{font-size:15px}.coverage-seal span{font-size:14px;line-height:1.55}
+.security-search.compact input{font-size:17px}.search-results b{font-size:16px}.search-results strong{font-size:14px}.search-results small{font-size:13px}
+.text-button,.primary-action,.stage-continue button,.opinion-lock button,.unlock-banner button{font-size:13px}
+.journey-heading p{font-size:18px}.intake-main legend,.hypothesis-field>span{font-size:20px}
+.choice-grid button,.knowledge-grid button,.knowledge-grid button strong{font-size:14px}.knowledge-grid button span,.hypothesis-field>small{font-size:12px}
+.intake-aside>span,.roadmap-grid header,.roadmap-grid small,.starting-thesis small{font-size:11px}
+.intake-aside li,.intake-aside p,.roadmap-grid p,.starting-thesis p{font-size:14px}
+.institutional-lens span,.hypothesis-ledger header span,.hypothesis-ledger small,.source-hierarchy strong,.source-hierarchy i{font-size:12px}
+.institutional-lens p,.source-hierarchy span,.hypothesis-ledger p strong{font-size:15px}
+.narrative-briefing header span,.narrative-briefing header small,.narrative-metrics small,.narrative-briefing>footer strong{font-size:12px}
+.narrative-metrics span,.narrative-briefing>footer p{font-size:15px}
+.evidence-card>header,.evidence-card>footer small{font-size:12px}.evidence-card>p{font-size:16px}.evidence-card>footer a,.evidence-card>footer>span{font-size:14px}
+.quant-method-guide>header span,.quant-method-guide article>small{font-size:12px}
+.quant-method-guide>header p,.quant-method-guide article p{font-size:15px}.quant-method-guide article p strong{font-size:11px}
+.quant-readout span,.quant-chart header span,.quant-chart header small,.factor-and-risk>article>header span,.factor-and-risk>article>header small{font-size:12px}
+.quant-readout p,.factor-row>small,.micro-note,.narrative-methods span{font-size:13px}.factor-row>strong,.factor-row>span,.risk-grid small{font-size:14px}
+.risk-grid strong{font-size:22px}.tutor-panel small,.tutor-response>small{font-size:12px}.tutor-panel strong{font-size:17px}.tutor-panel p,.tutor-response li,.tutor-response>p{font-size:15px}
+.opinion-header span,.opinion-header small,.opinion-columns span,.model-opinion>span,.full-opinion>header span,.full-opinion section>span{font-size:12px}
+.opinion-header p,.opinion-range span,.model-opinion p,.opinion-lock p{font-size:15px}.opinion-range i{font-size:12px}
+.opinion-executive-reading p,.opinion-explainer p{font-size:17px}.opinion-explainer small{font-size:12px}
+.opinion-methods>article>p,.opinion-evidence-explained>article p{font-size:15px}.opinion-methods>article>p small,.opinion-methods>article>div small,.opinion-evidence-explained>article small{font-size:11px}
+.opinion-evidence-explained>article footer{font-size:12px}.opinion-detail-grid li{font-size:15px}
+.opinion-assumptions>span,.opinion-sources>span,.opinion-assumptions small{font-size:12px}.opinion-assumptions strong,.opinion-sources>a strong{font-size:15px}
+.opinion-sources>a i,.opinion-sources>a small,.full-opinion>footer strong{font-size:12px}.full-opinion>footer p,.withheld-explanation{font-size:14px}
+.debrief-arc span,.lesson-grid span,.knowledge-check>header span,.quiz-grid-new article>small,.advice-boundary span{font-size:12px}
+.debrief-arc p,.lesson-grid p,.advice-boundary p{font-size:15px}.quiz-grid-new button{font-size:15px}.quiz-grid-new article>p{font-size:14px}
+.debrief-findings>header span,.debrief-findings article>span{font-size:12px}.debrief-findings p{font-size:16px}
+
+.model-selection-panel{max-width:1420px;margin:0 auto 20px;border:1px solid #aeb7a8;background:#f5f6ef}
+.model-selection-panel>header{padding:18px 20px;display:flex;justify-content:space-between;gap:20px;align-items:center;border-bottom:1px solid #c2c8bd}
+.model-selection-panel>header>div{display:flex;align-items:center;gap:9px}.model-selection-panel>header svg{width:20px;color:#5d7500}
+.model-selection-panel>header span{font:600 12px var(--mono);color:#526800}.model-selection-panel>header strong{font:600 14px var(--mono)}
+.model-data-grid{display:grid;grid-template-columns:repeat(5,1fr)}
+.model-data-grid p{padding:18px;margin:0;border-right:1px solid #c2c8bd;display:grid;gap:8px}
+.model-data-grid p:last-child{border:0}.model-data-grid small{font:600 11px var(--mono);color:#69756f}.model-data-grid strong{font-size:15px}
+.model-data-grid .available{background:#f0f5d9}.model-data-grid .missing{background:#f6e9dd}
+.model-selection-panel>footer{border-top:1px solid #c2c8bd;padding:17px 20px;display:grid;grid-template-columns:190px 1fr;gap:18px}
+.model-selection-panel>footer strong{font:600 12px var(--mono);color:#526800}.model-selection-panel>footer p{font-size:15px;line-height:1.6;margin:0}
+.journey-stage-dark .model-selection-panel{background:#151e1b;border-color:#35413c}.journey-stage-dark .model-selection-panel>*{border-color:#35413c}
+
+.sector-synthesis{max-width:1420px;margin:14px auto 0;border:1px solid #b7bdb3;background:#f7f7f1}
+.sector-synthesis>header{padding:25px}.sector-synthesis>header>div{display:flex;align-items:center;gap:10px}.sector-synthesis>header svg{color:#5d7500}
+.sector-synthesis>header span{font:600 12px var(--mono);color:#526800}.sector-synthesis>header h3{font:400 34px/1.12 var(--display);max-width:1150px;margin:18px 0}
+.sector-synthesis>header p{font-size:17px;line-height:1.65;max-width:1150px}
+.sector-synthesis>div{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #c1c6bd}
+.sector-synthesis article{padding:22px;border-right:1px solid #c1c6bd}.sector-synthesis article:last-child{border:0}
+.sector-synthesis article small{font:600 11px var(--mono);color:#5d7500}.sector-synthesis article h4{font:400 27px var(--display);margin:12px 0}
+.sector-synthesis article p{font-size:15px;line-height:1.6}.sector-synthesis article ul{padding-left:18px}.sector-synthesis article li{font-size:14px;line-height:1.5;margin:8px 0}
+.sector-synthesis>footer{padding:17px 22px;border-top:1px solid #c1c6bd;background:#e8edd2;font-size:15px;line-height:1.6}
+.sector-synthesis-educational{margin-top:28px}.sector-synthesis-educational>footer{background:#dce9a7}
+.earnings-model-panel{max-width:1420px;margin:10px auto 0;border:1px solid #536647;background:#172019;padding:24px;display:grid;grid-template-columns:34px 1fr;gap:16px}
+.earnings-model-panel>svg{color:var(--lime)}.earnings-model-panel span{font:600 12px var(--mono);color:var(--lime)}
+.earnings-model-panel h3{font:400 30px var(--display);margin:9px 0}.earnings-model-panel p{font-size:15px;line-height:1.65;color:#a7b2ac;margin:0}
+
+@media(max-width:900px){.model-data-grid,.sector-synthesis>div{grid-template-columns:1fr}.model-data-grid p,.sector-synthesis article{border-right:0;border-bottom:1px solid #c2c8bd}.model-selection-panel>footer{grid-template-columns:1fr}}
