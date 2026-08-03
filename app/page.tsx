@@ -1,102 +1,145 @@
 import Link from "next/link";
-import { ArrowDown, Binary, BookOpen, Braces, ChartNoAxesCombined, CircleCheck, Database, FlaskConical, ShieldCheck } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowRight,
+  Binary,
+  BookOpen,
+  Braces,
+  CheckCircle2,
+  Database,
+  FileText,
+  FlaskConical,
+  Lightbulb,
+  Scale,
+  ShieldCheck,
+} from "lucide-react";
 import { SecuritySearch } from "@/components/security-search";
 
 const samples = [
-  { symbol: "NVDA", name: "NVIDIA", market: "NASDAQ · USD", tag: "Full model" },
-  { symbol: "D05.SI", name: "DBS Group", market: "SGX · SGD", tag: "Model boundary" },
-  { symbol: "0700.HK", name: "Tencent", market: "HKEX · HKD", tag: "Full model" },
-  { symbol: "ASML.AS", name: "ASML", market: "EURONEXT · EUR", tag: "Full model" },
+  { symbol: "NVDA", name: "NVIDIA", market: "NASDAQ · USD", tag: "Full learning case", lesson: "Expectations vs. operating strength" },
+  { symbol: "D05.SI", name: "DBS Group", market: "SGX · SGD", tag: "Method boundary", lesson: "Why banks need different models" },
+  { symbol: "0700.HK", name: "Tencent", market: "HKEX · HKD", tag: "Full learning case", lesson: "Platform quality and uncertainty" },
+  { symbol: "ASML.AS", name: "ASML", market: "EURONEXT · EUR", tag: "Full learning case", lesson: "Quality, cyclicality and price" },
+];
+
+const journey = [
+  { number: "01", icon: <Lightbulb />, title: "Start with your hypothesis", text: "Tell Longview what caught your attention or what you currently believe. “I do not know” is a valid starting point." },
+  { number: "02", icon: <Database />, title: "Separate evidence from narrative", text: "See what is observed, calculated, interpreted or missing—and which evidence challenges the opening idea." },
+  { number: "03", icon: <Binary />, title: "Run the automatic Quant Lab", text: "Explore reverse DCF, scenario valuation, seeded uncertainty, factor proxies and historical risk without configuring a model." },
+  { number: "04", icon: <FileText />, title: "Read an educational opinion", text: "Longview publishes a standardised thesis, counter-thesis and model view with assumptions and uncertainty in plain sight." },
+  { number: "05", icon: <BookOpen />, title: "Understand before exporting", text: "A short debrief reconstructs the journey from your first idea to the final opinion and unlocks the complete learning piece." },
 ];
 
 export default function Home() {
   return (
     <main>
-      <section className="hero">
-        <div className="hero-grid">
-          <div className="hero-copy">
-            <div className="eyebrow"><span>GLOBAL EQUITY LEARNING AGENT</span><i>Life Agent · Singapore 2026</i></div>
-            <h1>Understand what a stock price <em>assumes.</em></h1>
-            <p>Longview turns institutional valuation methods into an inspectable learning experience—without pretending there is one correct target price.</p>
-            <SecuritySearch />
-            <div className="search-hints">
-              <span><CircleCheck size={14} /> Global listings</span>
-              <span><CircleCheck size={14} /> Deterministic math</span>
-              <span><CircleCheck size={14} /> No account required</span>
-            </div>
-          </div>
-          <div className="hero-terminal" aria-label="Illustrative valuation terminal">
-            <header><span>LONGVIEW / MODEL DISAGREEMENT</span><i>ILLUSTRATIVE</i></header>
-            <div className="terminal-security">
-              <span>NVDA · NASDAQ · USD</span>
-              <strong>Not one target.<br />A range of assumptions.</strong>
-            </div>
-            <div className="valuation-lines">
-              <div><span>Reverse DCF</span><i style={{ width: "79%" }} /><b>Growth implied</b></div>
-              <div><span>Scenario DCF</span><i style={{ width: "62%" }} /><b>$128–$214</b></div>
-              <div><span>Relative value</span><i style={{ width: "71%" }} /><b>$115–$216</b></div>
-              <div><span>Monte Carlo</span><i style={{ width: "67%" }} /><b>P10–P90</b></div>
-            </div>
-            <footer><Braces size={18} /><span>Every output traces back to a visible input and formula.</span></footer>
+      <section className="publication-hero">
+        <div className="publication-hero-copy">
+          <div className="eyebrow"><span>LIFE AGENT · SINGAPORE 2026</span><i>Independent educational publication</i></div>
+          <h1>See how a stock opinion is <em>built.</em></h1>
+          <p>Longview turns your curiosity about a company into a guided lesson through evidence, market expectations and institutional quant methods—without deciding whether you should invest.</p>
+          <SecuritySearch />
+          <div className="search-hints">
+            <span><CheckCircle2 /> Global security resolution</span>
+            <span><CheckCircle2 /> Complete no-LLM path</span>
+            <span><CheckCircle2 /> No account required</span>
           </div>
         </div>
-        <a className="scroll-cue" href="#methodology"><ArrowDown /> Explore the method</a>
+
+        <aside className="publication-cover">
+          <header><span>LONGVIEW / EDUCATIONAL OPINION 001</span><i>MODEL VIEW</i></header>
+          <div className="cover-company"><small>NVDA · NASDAQ · SAMPLE SNAPSHOT</small><h2>NVIDIA through a quant lens</h2><p>A transparent lesson in separating business strength from the expectations embedded in price.</p></div>
+          <div className="cover-layers">
+            <div><span>OBSERVED FACT</span><strong>Operating profile</strong><i>01</i></div>
+            <div><span>CALCULATION</span><strong>Implied expectations</strong><i>02</i></div>
+            <div><span>COUNTER-THESIS</span><strong>Execution required</strong><i>03</i></div>
+            <div><span>MODEL OPINION</span><strong>Mixed evidence</strong><i>04</i></div>
+          </div>
+          <footer><ShieldCheck /><span>Generic educational commentary—not a transaction recommendation.</span></footer>
+        </aside>
+
+        <a className="scroll-cue" href="#journey"><ArrowDown /> Follow the learning journey</a>
       </section>
 
-      <section className="trust-row">
+      <section className="trust-row publication-trust">
         <span>BUILT FOR SCEPTICAL LEARNERS</span>
-        <div><Database />Source-aware</div><div><Binary />Calculation-first</div><div><ShieldCheck />Non-personal</div><div><BookOpen />Designed to teach</div>
+        <div><Database />Source ledger</div>
+        <div><Braces />Deterministic math</div>
+        <div><Scale />Thesis and counter-thesis</div>
+        <div><ShieldCheck />Non-personal by design</div>
       </section>
 
-      <section className="method-section" id="methodology">
-        <div className="section-heading">
-          <span>01 / THE METHOD</span>
-          <h2>Four lenses. No false precision.</h2>
-          <p>A price target is only the output of assumptions. Longview opens those assumptions up so you can test them.</p>
-        </div>
-        <div className="method-grid">
-          <article><span>01</span><Braces /><h3>Reverse DCF</h3><p>Solve backwards from today’s price to reveal the cash-flow growth the market may already expect.</p><small>Expectation mapping</small></article>
-          <article><span>02</span><FlaskConical /><h3>Scenario valuation</h3><p>Adjust growth, discount rates and terminal assumptions. Watch the range move as the thesis changes.</p><small>Intrinsic-value model</small></article>
-          <article><span>03</span><ChartNoAxesCombined /><h3>Monte Carlo</h3><p>Run seeded simulations across uncertain inputs and inspect a distribution instead of a single answer.</p><small>Uncertainty modelling</small></article>
-          <article><span>04</span><Binary /><h3>Factor lens</h3><p>Learn how value, quality, momentum and volatility describe historical characteristics—not destiny.</p><small>Systematic investing</small></article>
+      <section className="journey-intro" id="journey">
+        <header className="section-heading">
+          <span>01 / THE JOURNEY</span>
+          <h2>Education begins before the first calculation.</h2>
+          <p>Your starting idea becomes the thread through the entire lesson. It changes what Longview explains—not the standardised financial opinion.</p>
+        </header>
+        <div className="journey-home-grid">
+          {journey.map((step) => (
+            <article key={step.number}>
+              <header><span>{step.number}</span>{step.icon}</header>
+              <h3>{step.title}</h3>
+              <p>{step.text}</p>
+            </article>
+          ))}
         </div>
       </section>
 
-      <section className="agent-section">
-        <div className="agent-copy">
-          <span>02 / THE AGENT</span>
-          <h2>An agent that shows its work.</h2>
-          <p>Gemini helps plan, challenge and teach. It never owns the arithmetic. When free-tier inference is unavailable, the deterministic research desk remains fully usable.</p>
-          <Link href="/research/NVDA">See the workflow in action <ArrowDown size={16} /></Link>
+      <section className="editorial-promise">
+        <div>
+          <span>02 / EDITORIAL ARCHITECTURE</span>
+          <h2>Facts are not calculations. Calculations are not opinions.</h2>
+          <p>Longview marks every claim by layer so the reader can see exactly where observation ends and interpretation begins.</p>
+          <Link href="/editorial-policy">Read the editorial policy <ArrowRight /></Link>
         </div>
-        <ol className="agent-steps">
-          <li><b>RESOLVE</b><span>Confirm listing, exchange and currency</span><i>01</i></li>
-          <li><b>MODEL</b><span>Calculate reproducible valuation ranges</span><i>02</i></li>
-          <li><b>CHALLENGE</b><span>Stress-test fragile assumptions</span><i>03</i></li>
-          <li><b>TEACH</b><span>Explain the method and its limits</span><i>04</i></li>
-        </ol>
+        <div className="layer-stack">
+          <article><i>01</i><Database /><span>OBSERVED FACT</span><strong>Directly attributable information</strong></article>
+          <article><i>02</i><Binary /><span>DETERMINISTIC CALCULATION</span><strong>Reproducible formula output</strong></article>
+          <article><i>03</i><BookOpen /><span>SOURCE INTERPRETATION</span><strong>A cited party’s explanation</strong></article>
+          <article><i>04</i><Lightbulb /><span>LONGVIEW MODEL OPINION</span><strong>Generic educational commentary</strong></article>
+        </div>
       </section>
 
-      <section className="samples-section" id="samples">
-        <div className="section-heading">
-          <span>03 / GLOBAL SAMPLE DESK</span>
-          <h2>Start with a model-ready case.</h2>
-          <p>Frozen, clearly labelled examples keep the judging path reliable while demonstrating exchange and currency handling.</p>
+      <section className="quant-promise">
+        <header className="section-heading">
+          <span>03 / THE QUANT LAB</span>
+          <h2>Institutional methods, translated.</h2>
+          <p>The arithmetic runs locally and reproducibly. Gemini can help teach, but it never owns canonical numbers or the model range.</p>
+        </header>
+        <div className="quant-method-grid">
+          <article><span>EXPECTATIONS</span><Braces /><h3>Reverse DCF</h3><p>Solve backwards from price to reveal the cash-flow growth implied by stated assumptions.</p></article>
+          <article><span>VALUATION</span><FlaskConical /><h3>Scenario grid</h3><p>Observe how growth and discount rates change a mechanical valuation range.</p></article>
+          <article><span>UNCERTAINTY</span><Binary /><h3>Monte Carlo</h3><p>Inspect a seeded distribution across uncertain inputs instead of one confident number.</p></article>
+          <article><span>SYSTEMATIC</span><Scale /><h3>Factor lens</h3><p>Learn how value, quality, momentum and volatility describe historical characteristics.</p></article>
         </div>
-        <div className="sample-grid">
+        <Link className="method-link" href="/methodology">Inspect formulas and model boundaries <ArrowRight /></Link>
+      </section>
+
+      <section className="samples-section" id="sample-cases">
+        <header className="section-heading">
+          <span>04 / TIMESTAMPED CASE DESK</span>
+          <h2>Begin with a complete learning case.</h2>
+          <p>Frozen, clearly labelled examples keep the hackathon path reliable while demonstrating different exchanges, currencies and model boundaries.</p>
+        </header>
+        <div className="sample-grid sample-grid-new">
           {samples.map((sample) => (
             <Link href={`/research/${sample.symbol}`} key={sample.symbol}>
               <header><strong>{sample.symbol}</strong><i>{sample.tag}</i></header>
-              <h3>{sample.name}</h3><p>{sample.market}</p><span>OPEN RESEARCH DESK ↗</span>
+              <h3>{sample.name}</h3>
+              <p>{sample.market}</p>
+              <small>{sample.lesson}</small>
+              <span>BEGIN GUIDED ANALYSIS <ArrowRight /></span>
             </Link>
           ))}
         </div>
       </section>
 
-      <section className="final-cta">
-        <span>LESS CERTAINTY. BETTER QUESTIONS.</span>
-        <h2>What does the price assume?</h2>
+      <section className="final-cta publication-cta">
+        <span>FROM CURIOSITY TO QUANT LITERACY</span>
+        <h2>What would you like to understand?</h2>
         <SecuritySearch />
+        <p>Longview does not ask about your portfolio, finances, objectives or risk tolerance.</p>
       </section>
     </main>
   );

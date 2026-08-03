@@ -1,10 +1,10 @@
 # Longview Research
 
-> **Understand what a stock price assumes.**
+> **Learn how a stock opinion is built.**
 
-Longview Research is a global equity-learning agent for retail investors. It turns reverse discounted cash flow, scenario valuation, Monte Carlo uncertainty and systematic factor concepts into an inspectable learning experience.
+Longview Research is a Life Agent for retail-investor education. A learner names a listed company and records what first caught their attention. Longview then guides them through the same broad sequence an evidence-led analyst might use: frame a hypothesis, examine evidence, run quantitative models, compare competing interpretations, and explain the resulting opinion.
 
-**Longview does not decide whether a stock is worth investing in.** It shows how different assumptions produce different valuation ranges, where the evidence is incomplete and what a learner should challenge next.
+The product publishes an **Independent Educational Opinion Piece**. It does not tell a person whether to buy, sell, hold, size, or time a position. The learner's hypothesis changes the teaching prompts, never the financial model or published conclusion.
 
 ## Hackathon submission
 
@@ -13,281 +13,204 @@ Longview Research is a global equity-learning agent for retail investors. It tur
 | Event | AIT x Tencent Hackathon — Singapore 2026 Challenge |
 | Track | **Life Agent** |
 | Product used | **Tencent Cloud CodeBuddy** |
-| Audience | Self-directed retail investors learning how equity valuation works |
-| Short blurb | **Understand what a stock price assumes.** |
-| Access | Browser application; no account required |
-| Reliable judge path | `/research/NVDA` |
+| Audience | Self-directed retail investors learning how equity analysis works |
+| Short blurb | **Learn how a stock opinion is built.** |
+| Reliable demo | `/research/NVDA` |
 | Repository | `https://github.com/MT7654/longviewresearch` |
 
 ## The problem
 
-Retail investors regularly encounter price targets without being shown:
+Retail investors can easily find headlines, price targets, forum narratives, and unexplained ratings. It is much harder to see:
 
-- which growth and margin assumptions produced the number;
-- how sensitive it is to discount rates and terminal values;
-- whether the underlying data is current or complete;
-- why different valuation methods disagree; or
-- what quantitative factors describe the security’s historical characteristics.
+- which statements are observed facts and which are interpretations;
+- what assumptions make a valuation mathematically possible;
+- why reasonable methods disagree;
+- when a familiar model is inappropriate for a company;
+- how an initial hunch can bias later research; and
+- what evidence would weaken a compelling story.
 
-The result is false precision. A single number appears authoritative even when it is conditional on fragile assumptions.
+Longview turns the finished answer into an inspectable learning journey.
 
-Longview replaces the opaque target with an educational question:
-
-> **What would need to be true for this price to make mathematical sense?**
-
-## What the agent does
-
-Longview operates as a bounded, observable workflow:
+## The product journey
 
 ```mermaid
 flowchart LR
-    A[Resolve exact listing] --> B[Validate data coverage]
-    B --> C[Run deterministic models]
-    C --> D[Challenge assumptions]
-    D --> E[Teach the method]
-    E --> F[Produce educational report]
+    A["Stock + learner hypothesis"] --> B["Automatic learning roadmap"]
+    B --> C["Layered evidence review"]
+    C --> D["Automatic quant lab"]
+    D --> E["Educational opinion"]
+    E --> F["Debrief + export"]
 ```
 
-1. **Resolve** — distinguishes symbols, exchanges, currencies and listings.
-2. **Validate** — exposes available price history, fundamentals and peer context.
-3. **Model** — calculates valuation and risk outputs in deterministic TypeScript.
-4. **Challenge** — uses one bounded Gemini request to identify fragile assumptions.
-5. **Teach** — explains methods, limitations and model disagreement.
-6. **Report** — provides a printable, general-circulation learning record.
+### 1. Starting point
 
-Gemini does not calculate the canonical valuation numbers. The model may critique and explain; tested code owns the arithmetic.
+The learner selects a stock and may write what caught their attention, what they currently believe, and how familiar they are with the company. This is an educational baseline, not a suitability questionnaire.
 
-## Working features
+### 2. Automatic roadmap
 
-### Global equity discovery
+Longview explains the research sequence it will follow. There is no research-plan approval step and no configuration burden for the learner.
 
-- Search by company name, symbol or exchange.
-- Resolve public equity and ADR search results.
-- Display exchange, country, currency and instrument type.
-- Accept exact global provider symbols such as `D05.SI`, `0700.HK` and `ASML.AS`.
-- Show an explicit unresolved state instead of guessing identity.
+### 3. Evidence review
 
-Live public search and price history use a server-side Yahoo Finance chart/search adapter. This is suitable for a hackathon demonstration, not a production data licence. Production rollout requires a licensed market-data provider.
+Evidence is separated into visible editorial layers:
 
-### Coverage-aware modelling
+- observed fact;
+- source interpretation;
+- deterministic calculation; and
+- Longview opinion.
 
-Before calculating, Longview labels whether it has:
+Each item carries a direction, source, date, and reliability cue. The interface explicitly asks what would confirm or weaken the learner's opening hypothesis.
 
-- verified identity;
-- a reference price;
-- sufficient monthly price history;
-- model-ready fundamentals; and
-- peer context.
+### 4. Automatic quant lab
 
-Unavailable data disables the affected method. The model is never asked to manufacture a missing canonical input.
+The app runs available models immediately:
 
-### Reverse DCF
+- reverse discounted cash flow;
+- scenario DCF;
+- relative valuation;
+- seeded Monte Carlo sensitivity;
+- value, quality, momentum, and low-volatility proxies; and
+- historical return, volatility, and drawdown measures.
 
-Longview starts with the reference price and numerically solves for a constant forecast free-cash-flow growth rate:
+Advanced controls are optional. Missing inputs withhold affected outputs rather than asking an LLM to invent them. A bank sample demonstrates that a generic free-cash-flow DCF should not be forced onto the wrong business model.
 
-```text
-Price = Σ FCFₜ / (1 + r)ᵗ + Terminal Value / (1 + r)ⁿ − Net Debt per Share
-```
+### 5. Independent Educational Opinion Piece
 
-The output is labelled **implied growth**, not predicted growth.
+Longview synthesises a dated model range, thesis, counter-thesis, coverage grade, risks, assumptions, evidence ledger, and standardised model opinion. The range is a mechanical sensitivity output, not a recommended target price.
 
-### Scenario DCF
+### 6. Educational debrief
 
-The learner can adjust:
+The learner sees how their opening hypothesis survived or changed, why each method was used, where uncertainty remains, and how an institutional analyst would challenge the result. A three-question comprehension check unlocks the complete printable opinion.
 
-- free cash flow per share;
-- forecast growth;
-- discount rate;
-- terminal growth;
-- forecast years; and
-- net debt per share.
+Risks, limitations, source dates, and the non-reliance notice are never hidden behind the gate.
 
-The result updates immediately. A growth-versus-discount-rate sensitivity matrix exposes how fragile the result is.
+## What makes it an AI agent
 
-### Relative valuation
+Longview is a bounded, multi-step analytical workflow rather than a general chat box:
 
-An entered earnings-per-share figure and comparison multiple produce a transparent relative value:
+1. resolve the exact security and listing;
+2. classify available evidence and coverage;
+3. execute deterministic quantitative methods;
+4. synthesise competing cases;
+5. teach against the learner's original hypothesis;
+6. optionally ask Gemini for a plain-language model critique; and
+7. fall back to a local deterministic tutor if inference is unavailable.
 
-```text
-Relative value = EPS × comparison P/E
-```
+The language model never owns the canonical arithmetic, data coverage decision, model range, or published model opinion.
 
-The interface calls this a comparison—not an intrinsic truth.
+## Cost and reliability design
 
-### Monte Carlo uncertainty
+The credential-free sample path is the primary demo. Hugging Face, Reddit, paid scrapers, and paid market-data APIs are not used.
 
-Longview runs 1,600 seeded simulations across:
+Gemini is optional and only called when the learner requests a model challenge. The server:
 
-- free cash flow per share;
-- forecast growth;
-- discount rate; and
-- terminal growth.
+- uses configurable primary and fallback models;
+- caches successful responses in memory;
+- retries transient failures once;
+- recognises common rate-limit responses;
+- applies a short cooldown; and
+- returns a deterministic educational critique if every route fails.
 
-It reports median and 10th–90th percentile model values. The seed makes the output reproducible in tests. The range represents sampled assumptions, not the real probability distribution of a future share price.
+Switching models may help when a limit is model-specific, but it is not treated as a way to bypass project-wide quotas. The app remains fully usable without an LLM call.
 
-### Factor lens
-
-The application presents transparent proxies for:
-
-- value: earnings and free-cash-flow yields;
-- quality: ROIC, operating margin and balance-sheet penalty;
-- momentum: trailing 12–1 month price behaviour; and
-- low volatility: inverse realised volatility.
-
-The interface explicitly states that these are educational proxies, not a full Fama–French regression and not trading signals.
-
-### Historical risk
-
-From monthly price observations, Longview calculates:
-
-- annualised arithmetic return;
-- annualised volatility;
-- return-to-volatility ratio;
-- maximum drawdown; and
-- trailing momentum.
-
-### Gemini model challenger
-
-The challenger receives only:
-
-- symbol;
-- non-personal model assumptions;
-- calculated DCF result;
-- reference price; and
-- coverage flags.
-
-It returns:
-
-- a concise model critique;
-- two to four pressure points; and
-- a learning note.
-
-No holdings, wealth, income, suitability or risk-tolerance data is collected.
-
-### Learning check
-
-Three questions test whether the learner understands:
-
-- what reverse DCF measures;
-- what a Monte Carlo valuation range means; and
-- how the product should behave when data is missing.
-
-## Sample cases
-
-The credential-free sample desk contains four frozen, model-ready demonstrations:
-
-| Symbol | Company | Exchange | Currency | Purpose |
-|---|---|---|---|---|
-| `NVDA` | NVIDIA | Nasdaq | USD | Primary end-to-end demo |
-| `D05.SI` | DBS Group | SGX | SGD | Demonstrates a model boundary for banks |
-| `0700.HK` | Tencent | HKEX | HKD | Asian non-Singapore listing |
-| `ASML.AS` | ASML | Euronext Amsterdam | EUR | European listing |
-
-Sample values are illustrative and clearly labelled. They are not represented as current market data. DBS intentionally disables the generic free-cash-flow DCF because banks require a different valuation framework such as residual income.
-
-## Gemini free-tier resilience
-
-Hugging Face is not used.
-
-The default routing is:
-
-1. `gemini-3.5-flash-lite`
-2. `gemini-3.1-flash-lite`
-3. deterministic local tutor
-
-The inference adapter:
-
-- makes no model call during page load;
-- calls Gemini only when the user selects **Challenge this model**;
-- caches successful responses in the running server process;
-- retries transient failures once with a bounded delay;
-- recognises common `429 RESOURCE_EXHAUSTED` responses;
-- applies a temporary cooldown;
-- tries a configured stable fallback model; and
-- returns a deterministic educational critique if all model routes fail.
-
-Gemini quotas are applied per Google Cloud project, not per API key. Limits differ by model and may change; the active project limits shown in Google AI Studio are authoritative. Switching models may help with a model-specific limit but does not bypass project-wide or shared tool quotas.
-
-Relevant documentation:
+Official references:
 
 - [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
-- [Gemini API pricing and free-tier terms](https://ai.google.dev/gemini-api/docs/pricing)
-- [Current Gemini models](https://ai.google.dev/gemini-api/docs/models)
-- [Gemini deprecation schedule](https://ai.google.dev/gemini-api/docs/deprecations)
+- [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
+- [Gemini models](https://ai.google.dev/gemini-api/docs/models)
 
-Because Google states that free-tier content may be used to improve its products, Longview deliberately excludes personal financial information from prompts.
+## Data and global coverage
 
-## Regulatory design boundary
+The search adapter accepts company names and global provider symbols such as `NVDA`, `D05.SI`, `0700.HK`, and `ASML.AS`. It resolves exchange, currency, country, and instrument type where available.
 
-Longview is general-circulation educational information. It:
+The hackathon build uses public Yahoo search and chart endpoints for discovery and price history. This is not a licensed production data feed. Arbitrary securities may therefore open in a partial-coverage state when model-ready fundamentals are unavailable.
 
-- does not ask about income, net worth, holdings or loss capacity;
-- does not collect risk tolerance or desired returns;
-- does not produce position sizes;
-- does not output buy, sell, hold, accumulate, reduce or avoid labels;
-- does not rank securities for a particular person;
-- separates reference data, user assumptions, calculations and interpretation;
-- uses ranges rather than an authoritative target price; and
-- displays a prominent non-personalisation notice.
+Four frozen demonstrations guarantee a stable judge path:
 
-The Financial Advisers Act 2001 includes electronic advice and research analyses within financial advisory services, and recommendations can be express or implied. Disclaimers are therefore treated as one control—not as permission to provide personalised advice.
+| Symbol | Company | Market | Demonstrates |
+|---|---|---|---|
+| `NVDA` | NVIDIA | Nasdaq / USD | Complete end-to-end lesson |
+| `D05.SI` | DBS Group | SGX / SGD | Bank-model boundary |
+| `0700.HK` | Tencent | HKEX / HKD | Asian global listing |
+| `ASML.AS` | ASML | Euronext / EUR | European global listing |
 
-- [Singapore Financial Advisers Act 2001](https://sso.agc.gov.sg/Act/FAA2001)
-- [Types of financial advisory service](https://sso.agc.gov.sg/Act/FAA2001?Phrase=electronic&ProvIds=Sc2-&ViewType=Advance&WiAl=1)
+Sample observations are clearly labelled and should not be represented as current market data.
 
-This project is not a legal opinion. Professional Singapore legal review is required before commercial launch.
+## Editorial and regulatory boundary
+
+Longview is designed as a general-circulation educational publication:
+
+- no income, wealth, holdings, loss capacity, risk-tolerance, or desired-return fields;
+- no personalised ranking or suitability decision;
+- no position size, transaction timing, or brokerage action;
+- no buy, sell, hold, accumulate, reduce, or avoid instruction;
+- no issuer-sponsored coverage, referral fee, or broker affiliate path;
+- visible separation of sources, calculations, interpretation, and opinion;
+- dated assumptions, model limitations, AI-use disclosure, and conflict disclosure;
+- public editorial, sourcing, correction, and versioning policy.
+
+Singapore's Financial Advisers Act can cover express or implied recommendations and electronic research analyses. Product language and disclaimers are therefore safeguards, not a substitute for legal classification. Independent Singapore counsel is required before commercial launch or live arbitrary-security publication.
+
+- [Financial Advisers Act 2001](https://sso.agc.gov.sg/Act/FAA2001)
+- [Longview editorial policy](/editorial-policy)
+- [Longview methodology](/methodology)
+
+This repository is not a legal opinion.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    UI[Next.js client workspace]
-    SEARCH[Global security search API]
-    DATA[Coverage-aware security adapter]
-    QUANT[Deterministic quant engine]
-    TUTOR[Quota-aware Gemini tutor]
-    FALLBACK[Deterministic tutor fallback]
+    UI["Next.js guided learning interface"]
+    SEARCH["Global security resolver"]
+    SAMPLE["Timestamped sample cases"]
+    QUANT["Deterministic quant engine"]
+    EDUCATION["Educational synthesis engine"]
+    GEMINI["Optional quota-aware Gemini tutor"]
+    FALLBACK["Deterministic tutor fallback"]
 
     UI --> SEARCH
-    UI --> DATA
-    UI --> QUANT
-    UI --> TUTOR
-    TUTOR --> FALLBACK
+    UI --> SAMPLE
+    SEARCH --> QUANT
+    SAMPLE --> QUANT
+    QUANT --> EDUCATION
+    EDUCATION --> UI
+    UI --> GEMINI
+    GEMINI --> FALLBACK
 ```
 
 ### Technology
 
 - Next.js 16 App Router through the vinext Cloudflare runtime
-- React 19
-- strict TypeScript
-- Google GenAI SDK
-- Zod
-- Recharts
-- Lucide icons
-- Vitest
-- ESLint
+- React 19 and strict TypeScript
+- Google GenAI SDK with Zod validation
+- Recharts and Lucide
+- Vitest and ESLint
+- Cloudflare-compatible deployment
 
-No database is required for the hackathon experience. Model inputs live only in the browser session. This reduces setup failure, privacy exposure and demo latency.
+No database is required for the hackathon journey. Learning state is saved only in the browser's local storage.
 
-### Important files
+### Key files
 
 | Concern | File |
 |---|---|
-| Global search and live chart adapter | `lib/security-provider.ts` |
-| Frozen global sample cases | `lib/samples.ts` |
-| DCF, reverse DCF, simulation and risk math | `lib/quant.ts` |
-| Gemini routing and deterministic fallback | `lib/gemini.ts` |
-| Global stock-search interface | `components/security-search.tsx` |
-| Research desk | `app/research/[symbol]/workspace.tsx` |
-| Formula and sample verification | `tests/` |
+| Global search and public chart adapter | `lib/security-provider.ts` |
+| Frozen sample cases | `lib/samples.ts` |
+| Quantitative calculations | `lib/quant.ts` |
+| Educational synthesis and hypothesis guardrail | `lib/education.ts` |
+| Optional Gemini routing and fallback | `lib/gemini.ts` |
+| Guided learning workspace | `app/research/[symbol]/workspace.tsx` |
+| Editorial governance | `app/editorial-policy/page.tsx` |
+| Public methodology | `app/methodology/page.tsx` |
+| Automated verification | `tests/` |
 
 ## Local setup
 
 ### Requirements
 
-- Node.js 22.13+ required for the Cloudflare-compatible vinext build
+- Node.js 22.13 or newer for the Cloudflare-compatible build
 - npm
-- Optional Google Gemini API key
+- optional Google Gemini API key
 
 ### Install
 
@@ -299,20 +222,18 @@ copy .env.example .env
 npm run dev
 ```
 
-On macOS or Linux, use `cp .env.example .env`.
-
-Open `http://localhost:3000`.
+On macOS or Linux, use `cp .env.example .env`. Then open `http://localhost:3000`.
 
 ### Environment variables
 
-| Variable | Required | Default | Purpose |
-|---|---:|---|---|
-| `GOOGLE_API_KEY` | No | — | Enables the optional Gemini model challenger |
-| `GEMINI_PRIMARY_MODEL` | No | `gemini-3.5-flash-lite` | Primary structured tutor model |
-| `GEMINI_FALLBACK_MODELS` | No | `gemini-3.1-flash-lite` | Comma-separated model fallback list |
-| `NEXT_PUBLIC_APP_URL` | No | `http://localhost:3000` | Canonical deployment origin |
+| Variable | Required | Purpose |
+|---|---:|---|
+| `GOOGLE_API_KEY` | No | Enables the optional Gemini model challenger |
+| `GEMINI_PRIMARY_MODEL` | No | Overrides the primary tutor model |
+| `GEMINI_FALLBACK_MODELS` | No | Comma-separated fallback list |
+| `NEXT_PUBLIC_APP_URL` | No | Canonical deployment origin |
 
-Do not add `NEXT_PUBLIC_` to the Gemini key. `.env` and `.env.local` are ignored by Git.
+Never expose the Gemini key with a `NEXT_PUBLIC_` prefix. The entire sample journey works without it.
 
 ## Verification
 
@@ -323,87 +244,65 @@ npm test
 npm run build
 ```
 
-Verified implementation baseline:
+Current baseline:
 
 - strict TypeScript passes;
 - ESLint passes with zero warnings;
-- 9 deterministic tests pass; and
-- the production build generates the landing page, research workspace and three server endpoints.
-
-Tests cover:
-
-- DCF determinism;
-- invalid terminal-value assumptions;
-- reverse-DCF numerical recovery;
-- relative valuation;
-- seeded Monte Carlo reproducibility;
-- maximum drawdown;
-- global sample diversity;
-- sample-data labelling; and
-- the bank-model boundary.
+- 13 automated tests pass;
+- deterministic model and education-layer tests pass;
+- sample flow requires no credentials.
 
 ## Judge walkthrough
 
-### Reliable 90-second path
+Use the complete script in [JUDGING_GUIDE.md](./JUDGING_GUIDE.md).
 
-1. Open the landing page.
-2. Select **NVDA** from the sample desk.
-3. Confirm the sample-data label and coverage panel.
-4. Inspect market-implied growth.
-5. Move the growth and discount-rate controls.
-6. Observe DCF, relative and Monte Carlo outputs update.
-7. Inspect the sensitivity matrix and factor lens.
-8. Select **Challenge this model**.
-9. Complete the learning check.
-10. Show the source ledger and regulatory boundary.
+The shortest reliable path is:
 
-### Global partial-data path
-
-1. Search for a different listed equity using its provider symbol.
-2. Confirm exchange, currency and public price-history coverage.
-3. Observe that missing fundamentals are disclosed.
-4. Enter a sourced FCF/share or EPS value to explore the mechanics.
+1. Open the landing page and choose NVIDIA.
+2. Write a one-sentence hypothesis.
+3. Show that Longview creates the roadmap automatically.
+4. Compare evidence layers and the hypothesis challenge.
+5. Show automatic reverse DCF, scenario, Monte Carlo, factor, and risk outputs.
+6. Open the educational opinion preview.
+7. Complete the three-question debrief.
+8. Export the complete Independent Educational Opinion Piece.
 
 ## Judging-criteria alignment
 
-| Dimension | Weight | Evidence in the product |
-|---|---:|---|
-| AI Innovation | 30% | Observable resolve–validate–model–challenge–teach workflow; Gemini critiques rather than fabricates arithmetic; deterministic fallback |
-| Technical Excellence | 20% | Global identity adapter, coverage gates, seeded simulation, formula tests, strict TypeScript, quota-aware inference |
-| User Experience | 25% | Immediate global search, institutional research-desk design, responsive controls, explicit missing-data states, learning check |
-| Business Value | 25% | Makes institutional valuation concepts understandable while avoiding personalised suitability and execution |
+| Dimension | Evidence |
+|---|---|
+| AI Innovation — 30% | Hypothesis-aware teaching, bounded synthesis, optional Gemini critique, deterministic fallback |
+| Technical Excellence — 20% | Global resolver, explicit coverage gates, reproducible simulation, formula tests, quota-aware routing |
+| User Experience — 25% | One-input start, automatic journey, institutional visual system, staged learning, printable outcome |
+| Business Value — 25% | Builds practical quant literacy without broker integration or personal-finance data collection |
 
-## Quantifiable targets
+## Product targets
 
-These are product targets, not fabricated user-study results:
+These are defined design targets, not fabricated study results:
 
 - 100% of displayed model outputs trace to visible inputs.
-- 100% of sample sources are labelled with type and date.
+- 100% of opinion sections identify their editorial layer.
 - Zero personal suitability fields.
-- Zero buy, sell or hold outputs.
+- Zero buy, sell, or hold outputs.
 - Complete sample journey without credentials.
-- Calculation-only journey remains available during Gemini rate limiting.
-- Three-question comprehension check built into every research desk.
+- Complete calculation journey during Gemini rate limiting.
+- One measurable three-question comprehension check per lesson.
 
 ## How CodeBuddy was used
 
-Tencent Cloud CodeBuddy was used to attempt the initial hackathon pivot and generate an implementation plan. The retained `.codebuddy/plans/` artifact provides repository-level evidence of that development workflow. Subsequent work repaired the resulting scope and correctness issues while preserving the hackathon’s CodeBuddy origin.
-
-For the submission’s required product-sharing paragraph:
-
-> I used Tencent Cloud CodeBuddy to convert an earlier market-research application into the foundation of a consumer investment-learning agent. CodeBuddy helped map the initial product pivot and accelerate changes across a large Next.js codebase. That process also exposed an important lesson: agent-generated code still needs explicit mathematical tests, data-provenance rules and product-scope review. The final Longview architecture separates Gemini’s explanatory role from deterministic valuation code, making every calculated output reproducible and allowing the demo to keep working when free-tier inference is rate-limited.
+Tencent Cloud CodeBuddy was used for the initial conversion of a market-entry research product into a retail-investor learning application. It accelerated repository mapping and early cross-codebase changes. The resulting build also demonstrated why agent-produced software needs explicit product boundaries, mathematical verification, and editorial governance. Longview's final architecture keeps AI in a bounded explanation role while deterministic, tested code owns every canonical number.
 
 ## Known limitations
 
-- Public Yahoo chart/search endpoints are not a licensed production feed and can change.
-- Live fundamentals are not automatically retrieved in this hackathon build.
-- Sample fundamentals are illustrative rather than current.
-- The factor lens uses transparent proxies, not licensed institutional factor data.
-- The generic DCF is inappropriate for banks and other balance-sheet-led businesses.
-- Taxes, country risk, dilution, accounting restatements, ADR ratios and historical FX require deeper production data.
-- In-memory Gemini cache and cooldown state reset when the server restarts.
+- Public Yahoo endpoints can change and are not a production data licence.
+- Arbitrary live fundamentals are not guaranteed.
+- Frozen sample data is illustrative rather than current.
+- The factor lens uses transparent proxies, not a full licensed factor dataset.
+- Generic DCF is inappropriate for banks and some other business models.
+- Taxes, country risk, dilution, restatements, ADR ratios, and historical FX need deeper production data.
 - Gemini free-tier capacity is not guaranteed.
-- Longview does not provide financial advice.
+- In-memory AI cache and cooldown reset when the server restarts.
+- Regulatory classification and launch language require Singapore legal review.
 
 ## Licence
 

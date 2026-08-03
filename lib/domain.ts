@@ -30,6 +30,10 @@ export type SourceRecord = {
   url: string;
   asOf: string;
   kind: "market" | "filing" | "methodology" | "demo";
+  tier?: "primary" | "secondary" | "methodology" | "demonstration";
+  claim?: string;
+  reliability?: "high" | "medium" | "illustrative";
+  retrievedAt?: string;
 };
 
 export type SecurityResearch = {
@@ -68,4 +72,38 @@ export type TutorResponse = {
   summary: string;
   pressurePoints: string[];
   lesson: string;
+};
+
+export type HypothesisProfile = {
+  attention: "product" | "news" | "price" | "mentioned" | "curious" | "unsure";
+  understanding: "new" | "some" | "comfortable";
+  hypothesis: string;
+};
+
+export type EvidenceRecord = {
+  id: string;
+  layer: "Observed fact" | "Deterministic calculation" | "Source interpretation" | "Longview model opinion";
+  tier: "Primary" | "Secondary" | "Methodology" | "Demonstration";
+  direction: "supports" | "challenges" | "context" | "limitation";
+  title: string;
+  detail: string;
+  sourceLabel: string;
+  asOf: string;
+};
+
+export type CoverageLevel = "full" | "partial" | "price-only";
+
+export type EducationalOpinion = {
+  title: string;
+  dek: string;
+  coverage: CoverageLevel;
+  hypothesisStatus: "Exploratory" | "Partially supported" | "Mixed evidence" | "Challenged" | "Presently unanswerable";
+  modelRange: { low: number; midpoint: number; high: number } | null;
+  impliedGrowth: number | null;
+  thesis: string;
+  counterThesis: string;
+  modelOpinion: string;
+  variablesToMonitor: string[];
+  unresolvedQuestions: string[];
+  evidence: EvidenceRecord[];
 };

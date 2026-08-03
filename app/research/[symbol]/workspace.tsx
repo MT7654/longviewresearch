@@ -1,14 +1,63 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
-  AlertTriangle, Binary, BookOpen, BrainCircuit, Check,
-  CircleHelp, Database, FileDown, FlaskConical, Gauge, LoaderCircle, RefreshCcw, ShieldCheck, Sparkles,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  Binary,
+  BookOpen,
+  BrainCircuit,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  CircleHelp,
+  Database,
+  FileDown,
+  FlaskConical,
+  Gauge,
+  Lightbulb,
+  LoaderCircle,
+  LockKeyhole,
+  RefreshCcw,
+  Scale,
+  ShieldCheck,
+  Sparkles,
+  Target,
 } from "lucide-react";
 import { SecuritySearch } from "@/components/security-search";
-import type { SecurityResearch, TutorResponse, ValuationAssumptions } from "@/lib/domain";
-import { dcfPerShare, factorLens, monteCarloValuation, relativeValue, reverseDcfGrowth, riskMetrics } from "@/lib/quant";
+import type {
+  EducationalOpinion,
+  HypothesisProfile,
+  SecurityResearch,
+  TutorResponse,
+  ValuationAssumptions,
+} from "@/lib/domain";
+import {
+  buildEducationalOpinion,
+  containsAdviceRequest,
+  defaultHypothesis,
+  learningPrompt,
+} from "@/lib/education";
+import {
+  dcfPerShare,
+  factorLens,
+  monteCarloValuation,
+  relativeValue,
+  reverseDcfGrowth,
+  riskMetrics,
+} from "@/lib/quant";
 
 const fallbackAssumptions: ValuationAssumptions = {
   fcfPerShare: 0,
@@ -21,12 +70,62 @@ const fallbackAssumptions: ValuationAssumptions = {
   targetPe: 25,
 };
 
+const stages = [
+  { short: "Starting point", label: "Your starting point" },
+  { short: "Roadmap", label: "Automatic learning roadmap" },
+  { short: "Evidence", label: "Evidence desk" },
+  { short: "Quant", label: "Automatic quant lab" },
+  { short: "Opinion", label: "Educational opinion" },
+  { short: "Debrief", label: "Education debrief" },
+];
+
+const attentionOptions: Array<{ value: HypothesisProfile["attention"]; label: string }> = [
+  { value: "product", label: "The company or its products" },
+  { value: "news", label: "Recent news or a narrative" },
+  { value: "price", label: "A large price move" },
+  { value: "mentioned", label: "Someone mentioned it" },
+  { value: "curious", label: "General curiosity" },
+  { value: "unsure", label: "I am not sure yet" },
+];
+
+const knowledgeOptions: Array<{ value: HypothesisProfile["understanding"]; label: string; detail: string }> = [
+  { value: "new", label: "New to this", detail: "Start with first principles" },
+  { value: "some", label: "Some familiarity", detail: "Explain the institutional logic" },
+  { value: "comfortable", label: "Comfortable", detail: "Emphasise model limits and counterarguments" },
+];
+
+const quizItems = [
+  {
+    question: "What does a reverse DCF tell you?",
+    options: ["Whether to buy today", "Growth implied by a price and assumptions", "A guaranteed future price"],
+    correct: 1,
+    explanation: "Reverse DCF works backwards from price. It maps expectations; it does not predict an outcome.",
+  },
+  {
+    question: "Why can a strong company still have a demanding market price?",
+    options: ["Business quality and valuation are separate questions", "Strong companies cannot be expensive", "Price always follows last year's earnings"],
+    correct: 0,
+    explanation: "A price can already reflect optimistic assumptions, even when the underlying business is excellent.",
+  },
+  {
+    question: "What should Longview do when canonical fundamentals are missing?",
+    options: ["Invent a reasonable number", "Copy another company's data", "Withhold the affected model"],
+    correct: 2,
+    explanation: "A visible limitation is more educational and reliable than a fabricated input.",
+  },
+];
+
 export function ResearchWorkspace({ symbol }: { symbol: string }) {
   const [research, setResearch] = useState<SecurityResearch | null>(null);
   const [assumptions, setAssumptions] = useState(fallbackAssumptions);
+  const [profile, setProfile] = useState<HypothesisProfile>(defaultHypothesis);
+  const [activeStage, setActiveStage] = useState(0);
+  const [completedThrough, setCompletedThrough] = useState(0);
+  const [quiz, setQuiz] = useState<Record<number, number>>({});
+  const [opinionUnlocked, setOpinionUnlocked] = useState(false);
   const [tutor, setTutor] = useState<TutorResponse | null>(null);
   const [tutorLoading, setTutorLoading] = useState(false);
-  const [quiz, setQuiz] = useState<Record<number, number>>({});
+  const [sessionReady, setSessionReady] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -50,20 +149,94 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           eps: body.fundamentals.eps ?? 0,
           targetPe: body.fundamentals.peerPeMedian ?? 25,
         });
+        try {
+          const stored = window.localStorage.getItem(`longview-learning:${body.identity.symbol}`);
+          if (stored) {
+            const parsed = JSON.parse(stored) as {
+              profile?: HypothesisProfile;
+              activeStage?: number;
+              completedThrough?: number;
+              quiz?: Record<number, number>;
+              opinionUnlocked?: boolean;
+            };
+            if (parsed.profile) setProfile(parsed.profile);
+            setActiveStage(Math.min(5, Math.max(0, parsed.activeStage ?? 0)));
+            setCompletedThrough(Math.min(5, Math.max(0, parsed.completedThrough ?? 0)));
+            if (parsed.quiz) setQuiz(parsed.quiz);
+            setOpinionUnlocked(Boolean(parsed.opinionUnlocked));
+          }
+        } catch {
+          // A damaged local session should never block the learning experience.
+        }
+        setSessionReady(true);
       })
       .catch((caught) => alive && setError(caught instanceof Error ? caught.message : "The security could not be loaded."));
     return () => { alive = false; };
   }, [symbol]);
 
+  useEffect(() => {
+    if (!research || !sessionReady) return;
+    window.localStorage.setItem(`longview-learning:${research.identity.symbol}`, JSON.stringify({
+      profile,
+      activeStage,
+      completedThrough,
+      quiz,
+      opinionUnlocked,
+    }));
+  }, [research, sessionReady, profile, activeStage, completedThrough, quiz, opinionUnlocked]);
+
   const valuation = useMemo(() => dcfPerShare(assumptions), [assumptions]);
-  const reverseGrowth = useMemo(() => research?.price ? reverseDcfGrowth(research.price, assumptions) : null, [research, assumptions]);
-  const relative = useMemo(() => relativeValue(assumptions.eps, assumptions.targetPe), [assumptions.eps, assumptions.targetPe]);
+  const reverseGrowth = useMemo(
+    () => research?.price ? reverseDcfGrowth(research.price, assumptions) : null,
+    [research, assumptions],
+  );
+  const relative = useMemo(
+    () => relativeValue(assumptions.eps, assumptions.targetPe),
+    [assumptions.eps, assumptions.targetPe],
+  );
   const simulation = useMemo(() => monteCarloValuation(assumptions), [assumptions]);
   const factors = useMemo(
-    () => research ? factorLens(research.price, assumptions, research.fundamentals.roic, research.fundamentals.operatingMargin, research.priceHistory) : [],
+    () => research
+      ? factorLens(research.price, assumptions, research.fundamentals.roic, research.fundamentals.operatingMargin, research.priceHistory)
+      : [],
     [research, assumptions],
   );
   const risk = useMemo(() => research ? riskMetrics(research.priceHistory) : null, [research]);
+  const opinion = useMemo(
+    () => research ? buildEducationalOpinion(research, assumptions, profile) : null,
+    [research, assumptions, profile],
+  );
+
+  const score = quizItems.reduce((total, item, index) => total + Number(quiz[index] === item.correct), 0);
+  const quizComplete = Object.keys(quiz).length === quizItems.length;
+
+  function advance(next: number) {
+    setCompletedThrough((current) => Math.max(current, next));
+    setActiveStage(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function beginJourney() {
+    advance(1);
+  }
+
+  function answerQuiz(index: number, optionIndex: number) {
+    const nextQuiz = { ...quiz, [index]: optionIndex };
+    setQuiz(nextQuiz);
+    const allCorrect = quizItems.every((item, itemIndex) => nextQuiz[itemIndex] === item.correct);
+    if (allCorrect) setOpinionUnlocked(true);
+  }
+
+  function resetSession() {
+    if (!research) return;
+    window.localStorage.removeItem(`longview-learning:${research.identity.symbol}`);
+    setProfile(defaultHypothesis);
+    setActiveStage(0);
+    setCompletedThrough(0);
+    setQuiz({});
+    setOpinionUnlocked(false);
+    setTutor(null);
+  }
 
   async function askTutor() {
     if (!research) return;
@@ -88,265 +261,680 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
     } catch {
       setTutor({
         mode: "deterministic",
-        summary: "The calculation desk remains available, but the optional model challenger is temporarily unavailable.",
-        pressurePoints: ["Check the source behind free cash flow per share.", "Test a wider discount-rate range.", "Compare how much of the result comes from terminal value."],
-        lesson: "A robust valuation is a range supported by traceable assumptions—not an answer produced by one model.",
+        summary: "The optional language tutor is unavailable, but the calculation and learning path remain complete.",
+        pressurePoints: [
+          "Reconcile free cash flow per share to a dated source.",
+          "Test a wider discount-rate range.",
+          "Check whether terminal value dominates the result.",
+        ],
+        lesson: "A model is useful when its assumptions can be inspected, challenged and reproduced.",
       });
     } finally {
       setTutorLoading(false);
     }
   }
 
-  if (error) return <main className="workspace-shell"><div className="fatal-card"><AlertTriangle /><h1>Research desk unavailable</h1><p>{error}</p><SecuritySearch compact /></div></main>;
-  if (!research) return <main className="workspace-shell"><div className="loading-desk"><LoaderCircle className="spin" /><span>RESOLVING GLOBAL SECURITY</span><h1>Checking listing, exchange and available evidence…</h1></div></main>;
+  if (error) {
+    return (
+      <main className="learning-workspace">
+        <div className="fatal-card"><AlertTriangle /><h1>Learning desk unavailable</h1><p>{error}</p><SecuritySearch compact /></div>
+      </main>
+    );
+  }
+
+  if (!research || !opinion) {
+    return (
+      <main className="learning-workspace">
+        <div className="loading-desk"><LoaderCircle className="spin" /><span>RESOLVING SECURITY</span><h1>Checking identity, coverage and available evidence…</h1></div>
+      </main>
+    );
+  }
 
   const priceChange = research.price && research.previousClose ? research.price / research.previousClose - 1 : null;
   const currency = research.identity.currency === "—" ? "" : research.identity.currency;
-  const formatMoney = (value: number | null) => value === null || !Number.isFinite(value) ? "Unavailable" : `${currency} ${value.toFixed(value >= 100 ? 0 : 2)}`;
-  const scored = Object.keys(quiz).length === 3 ? Number(quiz[0] === 1) + Number(quiz[1] === 2) + Number(quiz[2] === 0) : null;
+  const formatMoney = (value: number | null) =>
+    value === null || !Number.isFinite(value) ? "Unavailable" : `${currency} ${value.toFixed(value >= 100 ? 0 : 2)}`;
+  const prompt = learningPrompt(profile, research.identity.name);
 
   return (
-    <main className="workspace-shell">
-      <div className="workspace-top">
-        <SecuritySearch compact />
-        <button onClick={() => window.print()} className="quiet-button"><FileDown /> Export learning report</button>
-      </div>
-
-      <section className="security-hero">
-        <div className="security-title">
-          <span className="listing-code">{research.identity.symbol}</span>
-          <div><p>{research.identity.exchange} · {research.identity.country} · {research.identity.currency}</p><h1>{research.identity.name}</h1></div>
+    <main className="learning-workspace">
+      <section className="learning-security-bar">
+        <div className="security-identity">
+          <span>{research.identity.symbol}</span>
+          <div>
+            <small>{research.identity.exchange} · {research.identity.country} · {research.identity.currency}</small>
+            <h1>{research.identity.name}</h1>
+          </div>
         </div>
-        <div className="price-block">
+        <div className="security-reference">
           <small>REFERENCE PRICE</small>
           <strong>{research.price === null ? "—" : formatMoney(research.price)}</strong>
-          {priceChange !== null && <span className={priceChange >= 0 ? "positive" : "negative"}>{priceChange >= 0 ? "+" : ""}{(priceChange * 100).toFixed(2)}% vs previous close</span>}
+          {priceChange !== null && <span className={priceChange >= 0 ? "positive" : "negative"}>{priceChange >= 0 ? "+" : ""}{(priceChange * 100).toFixed(2)}%</span>}
           <i>{research.asOf}</i>
         </div>
-        <div className="mode-stamp"><span>{research.mode === "sample" ? "SAMPLE CASE" : research.mode === "live" ? "LIVE PUBLIC PRICE" : "UNVERIFIED"}</span><small>{research.note}</small></div>
+        <div className={`coverage-seal coverage-${opinion.coverage}`}>
+          <small>{opinion.coverage.toUpperCase()} COVERAGE</small>
+          <strong>{research.mode === "sample" ? "Timestamped sample" : research.mode === "live" ? "Public price data" : "Unverified symbol"}</strong>
+          <span>{research.note}</span>
+        </div>
       </section>
 
-      <nav className="desk-nav" aria-label="Research desk sections">
-        <a href="#overview">Overview</a><a href="#expectations">Expectations</a><a href="#valuation">Valuation lab</a><a href="#factors">Factor lens</a><a href="#sources">Sources</a><a href="#learn">What you learned</a>
+      <div className="learning-toolbar">
+        <SecuritySearch compact />
+        <button type="button" className="text-button" onClick={resetSession}><RefreshCcw /> Restart lesson</button>
+        <button
+          type="button"
+          className="text-button"
+          disabled={!opinionUnlocked}
+          onClick={() => window.print()}
+          title={opinionUnlocked ? "Print or save the complete opinion as PDF" : "Complete the education debrief to unlock export"}
+        >
+          {opinionUnlocked ? <FileDown /> : <LockKeyhole />} Export opinion
+        </button>
+      </div>
+
+      <nav className="journey-nav" aria-label="Learning stages">
+        {stages.map((stage, index) => {
+          const available = index <= completedThrough;
+          return (
+            <button
+              type="button"
+              key={stage.short}
+              disabled={!available}
+              className={activeStage === index ? "active" : index < activeStage ? "complete" : ""}
+              onClick={() => available && setActiveStage(index)}
+            >
+              <span>{index < completedThrough ? <Check /> : `0${index + 1}`}</span>
+              <strong>{stage.short}</strong>
+              <small>{available ? stage.label : "Complete the previous stage"}</small>
+            </button>
+          );
+        })}
       </nav>
 
-      <section className="desk-section" id="overview">
-        <header className="desk-heading"><span>01 / COVERAGE</span><div><h2>Know what the model knows.</h2><p>Longview checks coverage before calculating. Missing inputs disable a method instead of being silently invented.</p></div></header>
-        <div className="coverage-grid">
-          <Coverage label="Security identity" ready={research.coverage.identity} detail={`${research.identity.symbol} · ${research.identity.exchange}`} />
-          <Coverage label="Price reference" ready={research.coverage.price} detail={research.asOf} />
-          <Coverage label="Price history" ready={research.coverage.history} detail={`${research.priceHistory.length} monthly observations`} />
-          <Coverage label="Fundamentals" ready={research.coverage.fundamentals} detail={research.coverage.fundamentals ? "Model-ready demo inputs" : "Manual sourced inputs required"} />
-          <Coverage label="Peer context" ready={research.coverage.peers} detail={research.coverage.peers ? "Illustrative comparison band" : "Relative range unavailable"} />
-        </div>
-        <div className="workflow-ribbon">
-          {["Resolve", "Validate", "Model", "Challenge", "Teach"].map((step, index) => <div key={step}><span>0{index + 1}</span><strong>{step}</strong><i>{index < 2 ? "Complete" : "Ready"}</i></div>)}
-        </div>
-      </section>
+      {activeStage === 0 && (
+        <StageShell
+          eyebrow="01 / STARTING POINT"
+          title="Begin with what you think you know."
+          intro="Institutional research begins with a claim that can be tested. Your answers shape the teaching emphasis only; every reader receives the same underlying financial analysis."
+        >
+          <div className="intake-grid">
+            <div className="intake-main">
+              <fieldset>
+                <legend>What first drew your attention?</legend>
+                <div className="choice-grid">
+                  {attentionOptions.map((option) => (
+                    <button
+                      type="button"
+                      key={option.value}
+                      className={profile.attention === option.value ? "selected" : ""}
+                      onClick={() => setProfile({ ...profile, attention: option.value })}
+                    >
+                      {profile.attention === option.value && <Check />}
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
 
-      <section className="desk-section dark-section" id="expectations">
-        <header className="desk-heading"><span>02 / MARKET-IMPLIED EXPECTATIONS</span><div><h2>Work backwards from the price.</h2><p>Reverse DCF asks what constant free-cash-flow growth would make today’s reference price mathematically consistent with your other assumptions.</p></div></header>
-        <div className="expectation-grid">
-          <div className="big-reading">
-            <small>IMPLIED ANNUAL FCF GROWTH</small>
-            <strong>{reverseGrowth === null ? "—" : `${(reverseGrowth * 100).toFixed(1)}%`}</strong>
-            <p>{reverseGrowth === null ? "Add positive free cash flow per share and a reference price to unlock this calculation." : `For ${assumptions.forecastYears} forecast years, with a ${(assumptions.discountRate * 100).toFixed(1)}% discount rate and ${(assumptions.terminalGrowth * 100).toFixed(1)}% terminal growth.`}</p>
-          </div>
-          <div className="formula-card">
-            <span>MODEL / REVERSE DCF</span>
-            <code>Price = Σ FCFₜ / (1+r)ᵗ + TV / (1+r)ⁿ − net debt/share</code>
-            <p>Longview solves for growth <b>g</b>. It does not claim the company will achieve it.</p>
-            <div><Gauge /><span><strong>Interpretation</strong> Higher implied growth means more future execution may already be reflected in the reference price.</span></div>
-          </div>
-        </div>
-      </section>
+              <fieldset>
+                <legend>How familiar are you with this company?</legend>
+                <div className="knowledge-grid">
+                  {knowledgeOptions.map((option) => (
+                    <button
+                      type="button"
+                      key={option.value}
+                      className={profile.understanding === option.value ? "selected" : ""}
+                      onClick={() => setProfile({ ...profile, understanding: option.value })}
+                    >
+                      <strong>{option.label}</strong>
+                      <span>{option.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
 
-      <section className="desk-section" id="valuation">
-        <header className="desk-heading"><span>03 / VALUATION LAB</span><div><h2>Change the assumptions. Watch the range move.</h2><p>Inputs are editable because valuation is conditional. Use dated, sourced figures before treating any output as informative.</p></div></header>
-        {!research.coverage.fundamentals && (
-          <div className="boundary-banner"><AlertTriangle /><div><strong>Partial-data mode</strong><p>Public price history loaded, but canonical fundamentals are unavailable. Enter a sourced FCF/share and EPS below to explore the mechanics.</p></div></div>
-        )}
-        <div className="valuation-layout">
-          <aside className="assumption-panel">
-            <header><FlaskConical /><div><strong>MODEL ASSUMPTIONS</strong><small>Values apply to this browser session only</small></div></header>
-            <NumberField label="FCF per share" value={assumptions.fcfPerShare} step={0.1} onChange={(value) => setAssumptions({ ...assumptions, fcfPerShare: value })} />
-            <RangeField label="Forecast growth" value={assumptions.growthRate} min={-0.1} max={0.4} step={0.005} percent onChange={(value) => setAssumptions({ ...assumptions, growthRate: value })} />
-            <RangeField label="Discount rate" value={assumptions.discountRate} min={0.06} max={0.18} step={0.005} percent onChange={(value) => setAssumptions({ ...assumptions, discountRate: value })} />
-            <RangeField label="Terminal growth" value={assumptions.terminalGrowth} min={0} max={0.06} step={0.0025} percent onChange={(value) => setAssumptions({ ...assumptions, terminalGrowth: value })} />
-            <RangeField label="Forecast years" value={assumptions.forecastYears} min={3} max={10} step={1} onChange={(value) => setAssumptions({ ...assumptions, forecastYears: value })} />
-            <NumberField label="Net debt / share" value={assumptions.netDebtPerShare} step={0.1} onChange={(value) => setAssumptions({ ...assumptions, netDebtPerShare: value })} />
-            <div className="field-pair">
-              <NumberField label="EPS" value={assumptions.eps} step={0.1} onChange={(value) => setAssumptions({ ...assumptions, eps: value })} />
-              <NumberField label="Comparison P/E" value={assumptions.targetPe} step={1} onChange={(value) => setAssumptions({ ...assumptions, targetPe: value })} />
+              <label className="hypothesis-field">
+                <span>What do you currently believe or want to test? <i>Optional</i></span>
+                <textarea
+                  maxLength={280}
+                  value={profile.hypothesis}
+                  onChange={(event) => setProfile({ ...profile, hypothesis: event.target.value })}
+                  placeholder={`Example: “${research.identity.name} benefits from a durable industry trend, but I do not know what growth the current price already assumes.”`}
+                />
+                <small>{profile.hypothesis.length}/280 · Do not include holdings, income, risk tolerance or personal financial details.</small>
+              </label>
+
+              {containsAdviceRequest(profile.hypothesis) && (
+                <div className="boundary-note">
+                  <ShieldCheck />
+                  <p><strong>Longview cannot answer a transaction question.</strong> It will reinterpret your input as a request to understand evidence, assumptions and model mechanics.</p>
+                </div>
+              )}
+
+              <button type="button" className="primary-action" onClick={beginJourney}>
+                Begin the guided analysis <ArrowRight />
+              </button>
             </div>
-            <button className="reset-button" onClick={() => setAssumptions({
-              ...fallbackAssumptions,
-              fcfPerShare: research.fundamentals.fcfPerShare ?? 0,
-              eps: research.fundamentals.eps ?? 0,
-              growthRate: research.fundamentals.revenueGrowth ?? 0.12,
-              netDebtPerShare: research.fundamentals.netDebtPerShare ?? 0,
-              targetPe: research.fundamentals.peerPeMedian ?? 25,
-            })}><RefreshCcw /> Reset model</button>
-          </aside>
 
-          <div className="valuation-output">
-            <div className="model-cards">
-              <ModelCard label="Scenario DCF" value={formatMoney(valuation)} note="Present value of modelled per-share cash flows" active={valuation !== null} />
-              <ModelCard label="Relative value" value={formatMoney(relative)} note={`${assumptions.targetPe.toFixed(1)}× entered comparison multiple`} active={relative !== null} />
-              <ModelCard label="Monte Carlo median" value={formatMoney(valuation === null ? null : simulation.median)} note={valuation === null ? "Requires positive FCF/share" : `${formatMoney(simulation.p10)} – ${formatMoney(simulation.p90)} P10–P90`} active={valuation !== null} />
-            </div>
+            <aside className="intake-aside">
+              <span>EDUCATIONAL BOUNDARY</span>
+              <h3>Your curiosity personalises the lesson—not the opinion.</h3>
+              <ul>
+                <li><CheckCircle2 /> No suitability profile</li>
+                <li><CheckCircle2 /> No position sizing</li>
+                <li><CheckCircle2 /> No buy, sell or hold output</li>
+                <li><CheckCircle2 /> Identical core model for every reader</li>
+              </ul>
+              <p>Longview is an independent quant-literacy publication. It explains how an institutional analyst might investigate a question without deciding what you should do.</p>
+            </aside>
+          </div>
+        </StageShell>
+      )}
 
-            <article className="chart-card">
-              <header><div><span>VALUATION DISTRIBUTION</span><h3>1,600 seeded simulations</h3></div><small>Not a forecast probability</small></header>
+      {activeStage === 1 && (
+        <StageShell
+          eyebrow="02 / AUTOMATIC LEARNING ROADMAP"
+          title="Here is how Longview will investigate the question."
+          intro="This is an explanation, not an approval request. The research method is standardised and the analysis has already begun."
+        >
+          <div className="starting-thesis">
+            <Lightbulb />
+            <div><small>YOUR STARTING POINT</small><strong>{prompt.startingPoint}</strong><p>{prompt.emphasis}</p></div>
+          </div>
+          <div className="roadmap-grid">
+            <RoadmapCard number="01" icon={<Database />} title="Verify the evidence boundary" detail="Separate available observations from missing fundamentals and demonstration data." learning="Source quality before conclusions" />
+            <RoadmapCard number="02" icon={<Scale />} title="Build the counter-case" detail="Look for the strongest reason the opening idea could be incomplete." learning="Falsification, not confirmation" />
+            <RoadmapCard number="03" icon={<Binary />} title="Map market expectations" detail="Use reverse DCF to solve for growth implied by price and assumptions." learning="Price is not the same as value" />
+            <RoadmapCard number="04" icon={<FlaskConical />} title="Stress the model" detail="Run scenarios, systematic factor proxies and reproducible uncertainty." learning="Ranges before false precision" />
+            <RoadmapCard number="05" icon={<BookOpen />} title="Publish and reflect" detail="Separate facts, calculations, interpretation and Longview's model opinion." learning="Understand before exporting" />
+          </div>
+          <InstitutionalLens
+            institutional="An analyst defines the question, establishes an evidence hierarchy and chooses methods that fit the business before interpreting results."
+            plain="Longview will not force every company through the same formula or quietly fill missing data."
+            limitation="The hackathon build uses public price data and clearly labelled frozen fundamentals for its model-ready sample cases."
+          />
+          <StageContinue label="Continue to the evidence desk" onClick={() => advance(2)} />
+        </StageShell>
+      )}
+
+      {activeStage === 2 && (
+        <StageShell
+          eyebrow="03 / EVIDENCE DESK"
+          title="Separate evidence from narrative."
+          intro="Each item is labelled by what it is, where it came from and whether it supports, challenges or limits the opening idea."
+        >
+          <HypothesisLedger profile={profile} opinion={opinion} />
+          <div className="evidence-grid">
+            {opinion.evidence.map((item) => (
+              <article className={`evidence-card evidence-${item.direction}`} key={item.id}>
+                <header>
+                  <span>{item.layer}</span>
+                  <i>{item.direction}</i>
+                </header>
+                <h3>{item.title}</h3>
+                <p>{item.detail}</p>
+                <footer><Database /><span>{item.sourceLabel}</span><small>{item.tier} · {item.asOf}</small></footer>
+              </article>
+            ))}
+          </div>
+          <div className="source-hierarchy">
+            <div><strong>PRIMARY</strong><span>Filings, company disclosures and official data</span><i>Highest evidentiary weight</i></div>
+            <div><strong>SECONDARY</strong><span>Public market data and reputable contextual sources</span><i>Useful with attribution</i></div>
+            <div><strong>DEMONSTRATION</strong><span>Frozen hackathon cases with explicit timestamps</span><i>Reliable demo, not current data</i></div>
+          </div>
+          <InstitutionalLens
+            institutional="A professional research process keeps supporting and contradictory evidence in the same ledger."
+            plain="A convincing story is not enough. The difficult evidence often teaches more than the comfortable evidence."
+            limitation={research.coverage.fundamentals ? "This sample has model-ready illustrative fundamentals." : "Fundamental conclusions are limited because canonical financial inputs are unavailable."}
+          />
+          <StageContinue label="Continue to the automatic Quant Lab" onClick={() => advance(3)} />
+        </StageShell>
+      )}
+
+      {activeStage === 3 && (
+        <StageShell
+          eyebrow="04 / AUTOMATIC QUANT LAB"
+          title="Let the models disagree in public."
+          intro="Longview runs its default methods automatically. You can inspect advanced sensitivities, but no configuration is required to complete the lesson."
+          dark
+        >
+          <div className="quant-readout-grid">
+            <QuantReadout label="Market-implied FCF growth" value={reverseGrowth === null ? "Unavailable" : `${(reverseGrowth * 100).toFixed(1)}%`} detail="Solved backwards from the reference price" tone="lime" />
+            <QuantReadout label="Scenario DCF" value={formatMoney(valuation)} detail="Mechanical result under displayed defaults" tone="blue" />
+            <QuantReadout label="Model distribution" value={valuation === null ? "Unavailable" : `${formatMoney(simulation.p10)}–${formatMoney(simulation.p90)}`} detail="P10–P90 across seeded assumptions" tone="amber" />
+            <QuantReadout label="Relative comparison" value={formatMoney(relative)} detail={`${assumptions.targetPe.toFixed(1)}× comparison multiple`} tone="white" />
+          </div>
+
+          <div className="quant-chart-grid">
+            <article className="quant-chart">
+              <header><span>UNCERTAINTY DISTRIBUTION</span><strong>1,600 reproducible simulations</strong><small>Not a forecast probability</small></header>
               {valuation === null ? <EmptyModel /> : (
-                <ResponsiveContainer width="100%" height={280}>
+                <ResponsiveContainer width="100%" height={260}>
                   <AreaChart data={simulation.buckets}>
-                    <defs><linearGradient id="simulationFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c7ff4a" stopOpacity={0.65} /><stop offset="100%" stopColor="#c7ff4a" stopOpacity={0.03} /></linearGradient></defs>
-                    <CartesianGrid stroke="#27312e" vertical={false} />
-                    <XAxis dataKey="label" stroke="#788680" tickLine={false} axisLine={false} />
+                    <defs><linearGradient id="learningSimulation" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#c7ff4a" stopOpacity={0.7} /><stop offset="100%" stopColor="#c7ff4a" stopOpacity={0.03} /></linearGradient></defs>
+                    <CartesianGrid stroke="#2a3631" vertical={false} />
+                    <XAxis dataKey="label" stroke="#718078" tickLine={false} axisLine={false} />
                     <YAxis hide />
                     <Tooltip contentStyle={{ background: "#111916", border: "1px solid #34423d", color: "#fff" }} />
-                    {research.price && <ReferenceLine x={String(Math.round(research.price))} stroke="#ffb36b" />}
-                    <Area type="monotone" dataKey="count" stroke="#c7ff4a" fill="url(#simulationFill)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="count" stroke="#c7ff4a" fill="url(#learningSimulation)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
-              <footer><span><i className="dot lime" /> Simulated model values</span><span><i className="dot amber" /> Reference price may fall between buckets</span></footer>
             </article>
+            <article className="quant-chart">
+              <header><span>HISTORICAL PRICE SERIES</span><strong>{research.priceHistory.length} monthly observations</strong><small>Descriptive only</small></header>
+              {research.priceHistory.length > 2 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={research.priceHistory}>
+                    <CartesianGrid stroke="#2a3631" vertical={false} />
+                    <XAxis dataKey="date" hide />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ background: "#111916", border: "1px solid #34423d", color: "#fff" }} />
+                    <Line dataKey="close" type="monotone" dot={false} stroke="#8bd4ff" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <EmptyModel label="Price history is unavailable" />}
+            </article>
+          </div>
 
-            <article className="sensitivity-card">
-              <header><div><span>SENSITIVITY MATRIX</span><h3>Growth × discount rate</h3></div><small>{currency} / share</small></header>
+          <div className="factor-and-risk">
+            <article>
+              <header><span>SYSTEMATIC FACTOR PROXIES</span><small>Characteristics, not signals</small></header>
+              {factors.map((factor) => (
+                <div className="factor-row" key={factor.label}>
+                  <strong>{factor.label}</strong>
+                  <i><b style={{ width: `${factor.score}%` }} /></i>
+                  <span>{factor.score.toFixed(0)}</span>
+                  <small>{factor.detail}</small>
+                </div>
+              ))}
+            </article>
+            <article>
+              <header><span>HISTORICAL RISK SNAPSHOT</span><small>Based on available monthly data</small></header>
+              <div className="risk-grid">
+                <p><small>Annualised return*</small><strong>{risk ? `${(risk.annualReturn * 100).toFixed(1)}%` : "—"}</strong></p>
+                <p><small>Volatility</small><strong>{risk ? `${(risk.volatility * 100).toFixed(1)}%` : "—"}</strong></p>
+                <p><small>Return / volatility</small><strong>{risk ? risk.sharpe.toFixed(2) : "—"}</strong></p>
+                <p><small>Maximum drawdown</small><strong>{risk ? `${(risk.maxDrawdown * 100).toFixed(1)}%` : "—"}</strong></p>
+              </div>
+              <p className="micro-note">*Arithmetic annualisation. Historical behaviour does not predict future outcomes.</p>
+            </article>
+          </div>
+
+          <details className="advanced-lab">
+            <summary><FlaskConical /> Inspect the advanced sensitivity lab <ChevronRight /></summary>
+            <div className="advanced-grid">
+              <div className="assumption-controls">
+                <NumberField label="FCF per share" value={assumptions.fcfPerShare} step={0.1} onChange={(value) => setAssumptions({ ...assumptions, fcfPerShare: value })} />
+                <RangeField label="Forecast growth" value={assumptions.growthRate} min={-0.1} max={0.4} step={0.005} percent onChange={(value) => setAssumptions({ ...assumptions, growthRate: value })} />
+                <RangeField label="Discount rate" value={assumptions.discountRate} min={0.06} max={0.18} step={0.005} percent onChange={(value) => setAssumptions({ ...assumptions, discountRate: value })} />
+                <RangeField label="Terminal growth" value={assumptions.terminalGrowth} min={0} max={0.06} step={0.0025} percent onChange={(value) => setAssumptions({ ...assumptions, terminalGrowth: value })} />
+                <RangeField label="Forecast years" value={assumptions.forecastYears} min={3} max={10} step={1} onChange={(value) => setAssumptions({ ...assumptions, forecastYears: value })} />
+              </div>
               <SensitivityMatrix assumptions={assumptions} />
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section className="desk-section factor-section" id="factors">
-        <header className="desk-heading"><span>04 / FACTOR LENS</span><div><h2>Describe characteristics, not destiny.</h2><p>These transparent proxies borrow from systematic investing. They are descriptive rankings—not a Fama–French regression and not a trading signal.</p></div></header>
-        <div className="factor-layout">
-          <div className="factor-list">
-            {factors.map((factor) => (
-              <div key={factor.label}><header><strong>{factor.label}</strong><span>{factor.score.toFixed(0)} / 100</span></header><i><b style={{ width: `${factor.score}%` }} /></i><p>{factor.detail}</p></div>
-            ))}
-          </div>
-          <div className="risk-panel">
-            <span>HISTORICAL RISK SNAPSHOT</span>
-            <div className="risk-readings">
-              <div><small>Annualised return*</small><strong>{risk ? `${(risk.annualReturn * 100).toFixed(1)}%` : "—"}</strong></div>
-              <div><small>Annualised volatility</small><strong>{risk ? `${(risk.volatility * 100).toFixed(1)}%` : "—"}</strong></div>
-              <div><small>Return / volatility</small><strong>{risk ? risk.sharpe.toFixed(2) : "—"}</strong></div>
-              <div><small>Maximum drawdown</small><strong>{risk ? `${(risk.maxDrawdown * 100).toFixed(1)}%` : "—"}</strong></div>
             </div>
-            {research.priceHistory.length > 2 && (
-              <ResponsiveContainer width="100%" height={170}>
-                <LineChart data={research.priceHistory}>
-                  <XAxis dataKey="date" hide /><YAxis hide /><Tooltip contentStyle={{ background: "#111916", border: "1px solid #34423d", color: "#fff" }} />
-                  <Line dataKey="close" type="monotone" dot={false} stroke="#8bd4ff" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-            <small>*Arithmetic annualisation of monthly observations. Past behaviour does not predict future outcomes.</small>
-          </div>
-        </div>
-      </section>
+          </details>
 
-      <section className="desk-section challenge-section">
-        <header className="desk-heading"><span>05 / MODEL CHALLENGER</span><div><h2>Ask the agent to attack the assumptions.</h2><p>One bounded Gemini call critiques the model. Free-tier limits are respected; a deterministic tutor takes over if inference is unavailable.</p></div></header>
-        <div className="challenge-box">
-          <div className="challenge-intro"><BrainCircuit /><div><strong>QUANT TUTOR</strong><p>Uses public company context and non-personal assumptions only.</p></div><button disabled={tutorLoading} onClick={askTutor}>{tutorLoading ? <><LoaderCircle className="spin" /> Challenging…</> : <><Sparkles /> Challenge this model</>}</button></div>
-          {tutor ? (
-            <div className="tutor-output">
-              <span>{tutor.mode === "gemini" ? `GEMINI · ${tutor.model}` : "DETERMINISTIC FALLBACK"}</span>
+          <div className="tutor-panel">
+            <BrainCircuit />
+            <div>
+              <small>OPTIONAL QUANT TUTOR</small>
+              <strong>Ask for a plain-English model challenge.</strong>
+              <p>The complete lesson works without an API call. Gemini, when available, receives only non-personal model inputs.</p>
+            </div>
+            <button type="button" disabled={tutorLoading} onClick={askTutor}>
+              {tutorLoading ? <><LoaderCircle className="spin" /> Working…</> : <><Sparkles /> Challenge the model</>}
+            </button>
+          </div>
+          {tutor && (
+            <div className="tutor-response">
+              <small>{tutor.mode === "gemini" ? `GEMINI · ${tutor.model}` : "DETERMINISTIC TUTOR"}</small>
               <h3>{tutor.summary}</h3>
               <ul>{tutor.pressurePoints.map((point) => <li key={point}>{point}</li>)}</ul>
               <p><BookOpen /> {tutor.lesson}</p>
             </div>
-          ) : <div className="challenge-placeholder"><Binary /><span>The arithmetic is already complete. The optional tutor adds critique—not numbers.</span></div>}
-        </div>
-      </section>
+          )}
 
-      <section className="desk-section" id="sources">
-        <header className="desk-heading"><span>06 / SOURCE & ASSUMPTION LEDGER</span><div><h2>Trace the evidence boundary.</h2><p>Sample inputs are deliberately labelled. Live public price history never pretends to include fundamentals it does not have.</p></div></header>
-        <div className="source-table">
-          <header><span>INPUT / SOURCE</span><span>PUBLISHER</span><span>AS OF</span><span>TYPE</span></header>
-          {research.sources.length ? research.sources.map((source) => (
-            <a href={source.url} key={`${source.label}-${source.url}`} target={source.url.startsWith("http") ? "_blank" : undefined} rel="noreferrer">
-              <span><Database />{source.label}</span><span>{source.publisher}</span><span>{source.asOf}</span><span>{source.kind.toUpperCase()} ↗</span>
-            </a>
-          )) : <div className="no-sources"><AlertTriangle /> No source records are available for this unresolved symbol.</div>}
-        </div>
-        <div className="assumption-ledger">
-          <span>USER-CONTROLLED MODEL INPUTS</span>
-          <div>{Object.entries({
-            "FCF / share": assumptions.fcfPerShare,
-            "Growth": `${(assumptions.growthRate * 100).toFixed(1)}%`,
-            "Discount": `${(assumptions.discountRate * 100).toFixed(1)}%`,
-            "Terminal growth": `${(assumptions.terminalGrowth * 100).toFixed(1)}%`,
-            "Net debt / share": assumptions.netDebtPerShare,
-            "EPS": assumptions.eps,
-            "Comparison P/E": assumptions.targetPe,
-          }).map(([label, value]) => <p key={label}><small>{label}</small><strong>{value}</strong></p>)}</div>
-        </div>
-      </section>
+          <InstitutionalLens
+            institutional="Quant researchers use multiple models because every method answers a narrower question and carries different failure modes."
+            plain="The range is useful because it shows how quickly the answer changes when assumptions move."
+            limitation="Factor scores are transparent educational proxies, not licensed institutional signals or a complete factor regression."
+            dark
+          />
+          <StageContinue label="Continue to the opinion preview" onClick={() => advance(4)} dark />
+        </StageShell>
+      )}
 
-      <section className="desk-section learn-section" id="learn">
-        <header className="desk-heading"><span>07 / LEARNING CHECK</span><div><h2>Can you challenge the output?</h2><p>The Life Agent outcome is understanding—not acceptance of a number.</p></div></header>
-        <div className="quiz-grid">
-          <QuizQuestion number={0} question="What does reverse DCF estimate?" options={["Tomorrow’s price", "Growth implied by a price", "The correct portfolio weight"]} answer={quiz[0]} onAnswer={(answer) => setQuiz({ ...quiz, 0: answer })} />
-          <QuizQuestion number={1} question="What does the Monte Carlo range mean?" options={["Guaranteed outcomes", "Market consensus", "Outputs under sampled assumptions"]} answer={quiz[1]} onAnswer={(answer) => setQuiz({ ...quiz, 1: answer })} />
-          <QuizQuestion number={2} question="What should happen when fundamentals are missing?" options={["Disable affected models", "Let AI estimate them invisibly", "Use the last company’s data"]} answer={quiz[2]} onAnswer={(answer) => setQuiz({ ...quiz, 2: answer })} />
-        </div>
-        {scored !== null && <div className="quiz-result"><ShieldCheck /><div><strong>{scored}/3 concepts understood</strong><p>{scored === 3 ? "You are reading the model as a sceptical analyst." : "Review the highlighted method notes, then try again."}</p></div></div>}
-      </section>
+      {activeStage === 4 && (
+        <StageShell
+          eyebrow="05 / INDEPENDENT EDUCATIONAL OPINION"
+          title={opinion.title}
+          intro={opinion.dek}
+        >
+          <OpinionHeader research={research} opinion={opinion} formatMoney={formatMoney} />
+          <div className="opinion-columns">
+            <article className="opinion-thesis">
+              <span>THE THESIS</span>
+              <h3>{opinion.thesis}</h3>
+            </article>
+            <article className="opinion-counter">
+              <span>THE COUNTER-THESIS</span>
+              <h3>{opinion.counterThesis}</h3>
+            </article>
+          </div>
+          <article className="model-opinion">
+            <span>LONGVIEW MODEL OPINION</span>
+            <h3>{opinion.modelOpinion}</h3>
+            <p>This is standardised educational commentary. It is not a recommendation, suitability assessment or prediction that a market price will reach a displayed model value.</p>
+          </article>
 
-      <section className="regulatory-close">
-        <ShieldCheck />
-        <div><span>GENERAL-CIRCULATION EDUCATIONAL INFORMATION</span><h2>This research desk does not know whether an investment is suitable for you.</h2><p>It does not consider your objectives, financial situation, holdings or needs. Outputs are assumption-driven illustrations, not recommendations, offers or predictions. Consult a licensed financial adviser before making an investment decision.</p></div>
-      </section>
+          {!opinionUnlocked ? (
+            <div className="opinion-lock">
+              <LockKeyhole />
+              <div>
+                <small>COMPLETE RATIONALE LOCKED</small>
+                <h3>Understand the method before exporting the opinion.</h3>
+                <p>Risks, limitations and the headline model view remain visible. Complete three short learning checks to unlock the source ledger, full rationale and PDF-ready version.</p>
+              </div>
+              <button type="button" onClick={() => advance(5)}>Begin education debrief <ArrowRight /></button>
+            </div>
+          ) : (
+            <FullOpinion research={research} opinion={opinion} assumptions={assumptions} formatMoney={formatMoney} />
+          )}
+
+          <InstitutionalLens
+            institutional="Editorial discipline means clearly separating facts, calculations, source interpretation and the publication's own model opinion."
+            plain="The opinion can be challenged because its assumptions, counter-case and unresolved questions remain visible."
+            limitation="This opinion uses the exact data timestamp and coverage shown above. It should not be treated as current after that date."
+          />
+          {!opinionUnlocked && <StageContinue label="Continue to the education debrief" onClick={() => advance(5)} />}
+        </StageShell>
+      )}
+
+      {activeStage === 5 && (
+        <StageShell
+          eyebrow="06 / EDUCATION DEBRIEF"
+          title="Return to the idea you started with."
+          intro="The lesson is complete when you can explain how the evidence and model assumptions changed—or limited—your original understanding."
+        >
+          <div className="debrief-arc">
+            <article>
+              <span>YOU STARTED HERE</span>
+              <h3>{prompt.startingPoint}</h3>
+              <p>{prompt.emphasis}</p>
+            </article>
+            <ArrowRight />
+            <article>
+              <span>THE EVIDENCE LEDGER</span>
+              <h3>{opinion.evidence.filter((item) => item.direction === "supports").length} supporting · {opinion.evidence.filter((item) => item.direction === "challenges").length} challenging · {opinion.evidence.filter((item) => item.direction === "limitation").length} limitations</h3>
+              <p>The model preserves disagreement rather than reducing it to one sentiment score.</p>
+            </article>
+            <ArrowRight />
+            <article>
+              <span>THE EDUCATIONAL REFLECTION</span>
+              <h3>{opinion.hypothesisStatus}</h3>
+              <p>{opinion.modelOpinion}</p>
+            </article>
+          </div>
+
+          <div className="lesson-grid">
+            <article><Gauge /><span>EXPECTATIONS</span><h3>Price can be translated into assumptions.</h3><p>Reverse DCF asks what must be true without claiming that it will become true.</p></article>
+            <article><Scale /><span>VALUATION</span><h3>Business quality and price are different questions.</h3><p>Strong evidence about a company can coexist with demanding expectations.</p></article>
+            <article><BarChart3 /><span>UNCERTAINTY</span><h3>A range is more honest than false precision.</h3><p>Model disagreement reveals where judgement and missing information matter.</p></article>
+          </div>
+
+          <section className="knowledge-check">
+            <header><span>THREE-MINUTE CHECK</span><h2>Can you explain the opinion rather than repeat it?</h2></header>
+            <div className="quiz-grid-new">
+              {quizItems.map((item, index) => (
+                <article key={item.question}>
+                  <small>0{index + 1}</small>
+                  <h3>{item.question}</h3>
+                  <div>
+                    {item.options.map((option, optionIndex) => (
+                      <button
+                        type="button"
+                        key={option}
+                        className={quiz[index] === optionIndex ? "selected" : ""}
+                        onClick={() => answerQuiz(index, optionIndex)}
+                      >
+                        {quiz[index] === optionIndex && <Check />}
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                  {quiz[index] !== undefined && <p className={quiz[index] === item.correct ? "correct" : "review"}>{item.explanation}</p>}
+                </article>
+              ))}
+            </div>
+          </section>
+
+          {quizComplete && (
+            <div className={score === quizItems.length ? "unlock-banner unlocked" : "unlock-banner"}>
+              {score === quizItems.length ? <CheckCircle2 /> : <CircleHelp />}
+              <div>
+                <small>{score}/3 CONCEPTS UNDERSTOOD</small>
+                <h3>{score === quizItems.length ? "The complete Educational Opinion Piece is unlocked." : "Revisit the highlighted explanations and try again."}</h3>
+              </div>
+              {score === quizItems.length && <button type="button" onClick={() => advance(4)}>Read and export the complete opinion <ArrowRight /></button>}
+            </div>
+          )}
+
+          <div className="advice-boundary">
+            <ShieldCheck />
+            <div>
+              <span>THE FINAL BOUNDARY</span>
+              <h3>Longview has explained an analytical process. It has not decided whether this security belongs in your life.</h3>
+              <p>The service does not consider objectives, finances, holdings, loss capacity or needs. It does not recommend a transaction or course of action.</p>
+            </div>
+          </div>
+        </StageShell>
+      )}
+
+      {opinionUnlocked && (
+        <div className="print-opinion">
+          <FullOpinion research={research} opinion={opinion} assumptions={assumptions} formatMoney={formatMoney} print />
+        </div>
+      )}
     </main>
   );
 }
 
-function Coverage({ label, ready, detail }: { label: string; ready: boolean; detail: string }) {
-  return <article className={ready ? "ready" : "limited"}><span>{ready ? <Check /> : <AlertTriangle />}{ready ? "AVAILABLE" : "LIMITED"}</span><h3>{label}</h3><p>{detail}</p></article>;
+function StageShell({
+  eyebrow,
+  title,
+  intro,
+  dark = false,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  intro: string;
+  dark?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`journey-stage ${dark ? "journey-stage-dark" : ""}`}>
+      <header className="journey-heading">
+        <span>{eyebrow}</span>
+        <div><h2>{title}</h2><p>{intro}</p></div>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function RoadmapCard({ number, icon, title, detail, learning }: { number: string; icon: React.ReactNode; title: string; detail: string; learning: string }) {
+  return <article><header><span>{number}</span>{icon}</header><h3>{title}</h3><p>{detail}</p><small>{learning}</small></article>;
+}
+
+function InstitutionalLens({ institutional, plain, limitation, dark = false }: { institutional: string; plain: string; limitation: string; dark?: boolean }) {
+  return (
+    <div className={`institutional-lens ${dark ? "lens-dark" : ""}`}>
+      <article><Target /><div><span>INSTITUTIONAL LENS</span><p>{institutional}</p></div></article>
+      <article><Lightbulb /><div><span>PLAIN ENGLISH</span><p>{plain}</p></div></article>
+      <article><AlertTriangle /><div><span>LIMITATION</span><p>{limitation}</p></div></article>
+    </div>
+  );
+}
+
+function StageContinue({ label, onClick, dark = false }: { label: string; onClick: () => void; dark?: boolean }) {
+  return <div className={`stage-continue ${dark ? "stage-continue-dark" : ""}`}><span>Longview proceeds automatically. This button only moves you to the next explanation.</span><button type="button" onClick={onClick}>{label}<ArrowRight /></button></div>;
+}
+
+function HypothesisLedger({ profile, opinion }: { profile: HypothesisProfile; opinion: EducationalOpinion }) {
+  return (
+    <div className="hypothesis-ledger">
+      <header><Lightbulb /><span>LEARNING LEDGER</span><strong>{opinion.hypothesisStatus}</strong></header>
+      <div>
+        <p><small>Starting idea</small><strong>{profile.hypothesis.trim() || "Exploratory—no fixed thesis supplied"}</strong></p>
+        <p><small>What Longview tests</small><strong>Whether the available evidence and market-implied expectations support, challenge or limit that idea</strong></p>
+        <p><small>What never changes</small><strong>Financial inputs and the core opinion remain standardised for this security and data snapshot</strong></p>
+      </div>
+    </div>
+  );
+}
+
+function QuantReadout({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "lime" | "blue" | "amber" | "white" }) {
+  return <article className={`quant-readout tone-${tone}`}><span>{label}</span><strong>{value}</strong><p>{detail}</p></article>;
+}
+
+function OpinionHeader({
+  research,
+  opinion,
+  formatMoney,
+}: {
+  research: SecurityResearch;
+  opinion: EducationalOpinion;
+  formatMoney: (value: number | null) => string;
+}) {
+  return (
+    <div className="opinion-header">
+      <div>
+        <span>INDEPENDENT EDUCATIONAL OPINION · {research.identity.symbol}</span>
+        <h3>{opinion.hypothesisStatus}</h3>
+        <p>Model version 1.0 · {research.asOf} · {opinion.coverage} coverage</p>
+      </div>
+      <div className="opinion-range">
+        <small>MODEL-DERIVED RANGE</small>
+        <strong>{opinion.modelRange ? `${formatMoney(opinion.modelRange.low)}–${formatMoney(opinion.modelRange.high)}` : "Withheld"}</strong>
+        <span>{opinion.modelRange ? `Mechanical midpoint ${formatMoney(opinion.modelRange.midpoint)}` : "Insufficient model-ready evidence"}</span>
+      </div>
+      <div className="opinion-disclosure">
+        <ShieldCheck />
+        <p>Educational commentary—not a recommended target price, prediction or transaction recommendation.</p>
+      </div>
+    </div>
+  );
+}
+
+function FullOpinion({
+  research,
+  opinion,
+  assumptions,
+  formatMoney,
+  print = false,
+}: {
+  research: SecurityResearch;
+  opinion: EducationalOpinion;
+  assumptions: ValuationAssumptions;
+  formatMoney: (value: number | null) => string;
+  print?: boolean;
+}) {
+  return (
+    <article className={`full-opinion ${print ? "full-opinion-print" : ""}`}>
+      <header>
+        <div><span>LONGVIEW RESEARCH</span><h2>{opinion.title}</h2><p>{opinion.dek}</p></div>
+        <aside><strong>{research.identity.symbol}</strong><span>{research.identity.exchange}</span><span>{research.identity.currency}</span><small>{research.asOf}</small></aside>
+      </header>
+
+      <section className="opinion-summary-grid">
+        <div><small>EDUCATIONAL REFLECTION</small><strong>{opinion.hypothesisStatus}</strong></div>
+        <div><small>MODEL-DERIVED RANGE</small><strong>{opinion.modelRange ? `${formatMoney(opinion.modelRange.low)}–${formatMoney(opinion.modelRange.high)}` : "Withheld"}</strong></div>
+        <div><small>IMPLIED FCF GROWTH</small><strong>{opinion.impliedGrowth === null ? "Unavailable" : `${(opinion.impliedGrowth * 100).toFixed(1)}%`}</strong></div>
+        <div><small>COVERAGE</small><strong>{opinion.coverage}</strong></div>
+      </section>
+
+      <section className="opinion-body-grid">
+        <div><span>THESIS</span><p>{opinion.thesis}</p></div>
+        <div><span>COUNTER-THESIS</span><p>{opinion.counterThesis}</p></div>
+      </section>
+
+      <section className="opinion-conclusion">
+        <span>LONGVIEW MODEL OPINION</span>
+        <h3>{opinion.modelOpinion}</h3>
+      </section>
+
+      <section className="opinion-detail-grid">
+        <div><span>VARIABLES TO MONITOR</span><ol>{opinion.variablesToMonitor.map((item) => <li key={item}>{item}</li>)}</ol></div>
+        <div><span>UNRESOLVED QUESTIONS</span><ol>{opinion.unresolvedQuestions.map((item) => <li key={item}>{item}</li>)}</ol></div>
+      </section>
+
+      <section className="opinion-evidence-table">
+        <header><span>LAYER</span><span>ITEM</span><span>DIRECTION</span><span>SOURCE</span></header>
+        {opinion.evidence.map((item) => (
+          <div key={item.id}><span>{item.layer}</span><strong>{item.title}</strong><i>{item.direction}</i><small>{item.sourceLabel}</small></div>
+        ))}
+      </section>
+
+      <section className="opinion-assumptions">
+        <span>MODEL ASSUMPTIONS</span>
+        <div>
+          <p><small>FCF / share</small><strong>{assumptions.fcfPerShare}</strong></p>
+          <p><small>Growth</small><strong>{(assumptions.growthRate * 100).toFixed(1)}%</strong></p>
+          <p><small>Discount rate</small><strong>{(assumptions.discountRate * 100).toFixed(1)}%</strong></p>
+          <p><small>Terminal growth</small><strong>{(assumptions.terminalGrowth * 100).toFixed(1)}%</strong></p>
+          <p><small>Forecast years</small><strong>{assumptions.forecastYears}</strong></p>
+        </div>
+      </section>
+
+      <section className="opinion-sources">
+        <span>SOURCE LEDGER</span>
+        {research.sources.map((source) => (
+          <p key={`${source.label}-${source.url}`}><strong>{source.label}</strong><i>{source.publisher}</i><small>{source.asOf} · {source.kind}</small></p>
+        ))}
+      </section>
+
+      <footer>
+        <div><strong>INTERESTS</strong><p>No issuer compensation, broker referral, sponsored coverage or model-specific commercial consideration is declared in this hackathon build.</p></div>
+        <div><strong>AI USE</strong><p>Deterministic code owns calculations. Gemini is optional and limited to plain-language critique; it does not set canonical inputs or the model range.</p></div>
+        <div><strong>NON-RELIANCE</strong><p>This generic educational opinion does not consider any reader&apos;s objectives, finances, holdings or needs and does not recommend a transaction.</p></div>
+      </footer>
+    </article>
+  );
 }
 
 function RangeField({ label, value, min, max, step, percent = false, onChange }: { label: string; value: number; min: number; max: number; step: number; percent?: boolean; onChange: (value: number) => void }) {
-  return <label className="range-field"><span>{label}<strong>{percent ? `${(value * 100).toFixed(1)}%` : value}</strong></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+  return <label className="range-field-new"><span>{label}<strong>{percent ? `${(value * 100).toFixed(1)}%` : value}</strong></span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
 }
 
 function NumberField({ label, value, step, onChange }: { label: string; value: number; step: number; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><input type="number" value={value} step={step} onChange={(event) => onChange(Number(event.target.value) || 0)} /></label>;
+  return <label className="number-field-new"><span>{label}</span><input type="number" value={value} step={step} onChange={(event) => onChange(Number(event.target.value) || 0)} /></label>;
 }
 
-function ModelCard({ label, value, note, active }: { label: string; value: string; note: string; active: boolean }) {
-  return <article className={active ? "" : "inactive"}><span>{label}</span><strong>{value}</strong><p>{note}</p></article>;
-}
-
-function EmptyModel() {
-  return <div className="empty-model"><CircleHelp /><strong>Model waiting for a valid input</strong><p>Enter positive free cash flow per share and keep the discount rate above terminal growth.</p></div>;
+function EmptyModel({ label = "Model waiting for valid inputs" }: { label?: string }) {
+  return <div className="empty-model-new"><CircleHelp /><strong>{label}</strong><p>Longview withholds calculations when the evidence or model conditions are insufficient.</p></div>;
 }
 
 function SensitivityMatrix({ assumptions }: { assumptions: ValuationAssumptions }) {
   const growthRates = [-0.04, -0.02, 0, 0.02, 0.04].map((offset) => assumptions.growthRate + offset);
   const discountRates = [-0.02, -0.01, 0, 0.01, 0.02].map((offset) => Math.max(assumptions.terminalGrowth + 0.015, assumptions.discountRate + offset));
   return (
-    <div className="matrix">
-      <div className="matrix-row matrix-head"><i /><span>G −4%</span><span>G −2%</span><span>BASE G</span><span>G +2%</span><span>G +4%</span></div>
-      {discountRates.map((discount, row) => (
-        <div className="matrix-row" key={discount}>
-          <i>R {(discount * 100).toFixed(1)}%</i>
-          {growthRates.map((growth, column) => {
-            const value = dcfPerShare({ ...assumptions, growthRate: growth, discountRate: discount });
-            return <span className={row === 2 && column === 2 ? "base-cell" : ""} key={growth}>{value === null ? "—" : value.toFixed(value >= 100 ? 0 : 1)}</span>;
-          })}
-        </div>
-      ))}
+    <div className="sensitivity-matrix-new">
+      <header><span>SENSITIVITY MATRIX</span><strong>Growth × discount rate</strong></header>
+      <div className="matrix-new">
+        <div className="matrix-row-new matrix-head-new"><i /><span>G −4%</span><span>G −2%</span><span>BASE</span><span>G +2%</span><span>G +4%</span></div>
+        {discountRates.map((discount, row) => (
+          <div className="matrix-row-new" key={discount}>
+            <i>R {(discount * 100).toFixed(1)}%</i>
+            {growthRates.map((growth, column) => {
+              const value = dcfPerShare({ ...assumptions, growthRate: growth, discountRate: discount });
+              return <span className={row === 2 && column === 2 ? "base-cell-new" : ""} key={growth}>{value === null ? "—" : value.toFixed(value >= 100 ? 0 : 1)}</span>;
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
-}
-
-function QuizQuestion({ number, question, options, answer, onAnswer }: { number: number; question: string; options: string[]; answer?: number; onAnswer: (answer: number) => void }) {
-  return <article><span>0{number + 1}</span><h3>{question}</h3><div>{options.map((option, index) => <button className={answer === index ? "selected" : ""} onClick={() => onAnswer(index)} key={option}>{answer === index && <Check />}{option}</button>)}</div></article>;
 }
