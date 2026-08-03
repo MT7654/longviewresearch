@@ -23,6 +23,7 @@ export type SecurityIdentity = {
 export type Fundamentals = {
   fcfPerShare?: number;
   eps?: number;
+  revenuePerShare?: number;
   revenueGrowth?: number;
   operatingMargin?: number;
   roic?: number;
@@ -127,7 +128,7 @@ export type EducationalOpinion = {
   dek: string;
   coverage: CoverageLevel;
   hypothesisStatus: "Exploratory" | "Partially supported" | "Mixed evidence" | "Challenged" | "Presently unanswerable";
-  valuationMethod: "Discounted cash flow" | "Earnings-multiple scenario" | null;
+  valuationMethod: "Discounted cash flow" | "Earnings-multiple scenario" | "Revenue-multiple scenario" | null;
   modelRange: { low: number; midpoint: number; high: number } | null;
   impliedGrowth: number | null;
   thesis: string;

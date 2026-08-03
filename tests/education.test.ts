@@ -25,6 +25,24 @@ describe("educational publication controls", () => {
     expect(opinion.modelOpinion.toLowerCase()).toContain("earnings-multiple");
   });
 
+  it("selects a revenue-multiple scenario for a pre-profit company with reported sales", () => {
+    const research = {
+      ...sampleResearch.NVDA,
+      fundamentals: {
+        ...sampleResearch.NVDA.fundamentals,
+        fcfPerShare: undefined,
+        eps: undefined,
+        revenuePerShare: 1.8,
+        revenueGrowth: 0.32,
+        netDebtPerShare: -0.4,
+      },
+    };
+    const opinion = buildEducationalOpinion(research, { ...assumptions, fcfPerShare: 0, eps: 0 }, defaultHypothesis);
+    expect(opinion.valuationMethod).toBe("Revenue-multiple scenario");
+    expect(opinion.modelRange).not.toBeNull();
+    expect(opinion.modelOpinion.toLowerCase()).toContain("revenue-multiple");
+  });
+
   it("labels facts, calculations and model opinion separately", () => {
     const opinion = buildEducationalOpinion(sampleResearch.NVDA, assumptions, {
       ...defaultHypothesis,

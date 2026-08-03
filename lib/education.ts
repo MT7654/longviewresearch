@@ -315,12 +315,26 @@ export function buildEducationalOpinion(
     midpoint: earningsMidpoint,
     high: earningsMidpoint * 1.2,
   };
+  const revenuePerShare = research.fundamentals.revenuePerShare ?? 0;
+  const revenueGrowth = research.fundamentals.revenueGrowth ?? 0;
+  const revenueMultiple = revenueGrowth >= 0.3 ? 6 : revenueGrowth >= 0.15 ? 4 : 2.5;
+  const netDebtPerShare = research.fundamentals.netDebtPerShare ?? 0;
+  const revenueMidpoint = value === null && assumptions.eps <= 0 && revenuePerShare > 0
+    ? Math.max(0, revenuePerShare * revenueMultiple - netDebtPerShare)
+    : null;
+  const revenueRange = revenueMidpoint === null ? null : {
+    low: Math.max(0, revenuePerShare * revenueMultiple * 0.65 - netDebtPerShare),
+    midpoint: revenueMidpoint,
+    high: Math.max(0, revenuePerShare * revenueMultiple * 1.35 - netDebtPerShare),
+  };
   const valuationMethod: EducationalOpinion["valuationMethod"] = simulation
     ? "Discounted cash flow"
     : earningsRange
       ? "Earnings-multiple scenario"
-      : null;
-  const modelRange = simulation ? { low: simulation.p10, midpoint: simulation.median, high: simulation.p90 } : earningsRange;
+      : revenueRange
+        ? "Revenue-multiple scenario"
+        : null;
+  const modelRange = simulation ? { low: simulation.p10, midpoint: simulation.median, high: simulation.p90 } : earningsRange ?? revenueRange;
 
   let modelOpinion = "The available evidence is too thin to support either a financial valuation or a useful narrative assessment.";
   let status: EducationalOpinion["hypothesisStatus"] = profile.hypothesis.trim() ? "Presently unanswerable" : "Exploratory";
@@ -364,6 +378,25 @@ export function buildEducationalOpinion(
         : "inside";
     modelOpinion = `${bankLike ? "Because industrial free cash flow is unsuitable for this bank, Longview selected an earnings-multiple scenario instead." : "Reported earnings support an earnings-multiple scenario even though a cash-flow DCF is unavailable."} The reference price sits ${pricePosture} a ${earningsMultiple.toFixed(1)}× base-P/E range of ${research.identity.currency} ${modelRange.low.toFixed(2)}–${modelRange.high.toFixed(2)}. This is a conditional comparison; book value, sustainable return on equity and credit quality still require primary-source review.`;
     status = pricePosture === "inside" ? "Partially supported" : "Mixed evidence";
+  } else if (valuationMethod === "Revenue-multiple scenario" && modelRange) {
+    const pricePosture = research.price !== null && research.price > modelRange.high
+      ? "above"
+      : research.price !== null && research.price < modelRange.low
+        ? "below"
+        : "inside";
+    modelOpinion = `Positive cash flow and earnings were not available, so Longview selected a revenue-multiple scenario rather than forcing a DCF. The reference price sits ${pricePosture} a ${revenueMultiple.toFixed(1)}× base EV-to-sales scenario of ${research.identity.currency} ${modelRange.low.toFixed(2)}–${modelRange.high.toFixed(2)}. This is a relative valuation cross-check, not intrinsic value: future margins, capital intensity, dilution, net debt and the choice of comparison multiple can materially change the result.`;
+    status = pricePosture === "inside" ? "Partially supported" : "Mixed evidence";
+    variablesToMonitor = [...new Set([
+      ...narrative.themes.slice(0, 3).map((item) => item.theme),
+      "Revenue growth and backlog conversion",
+      "Gross margin and operating leverage",
+      "Cash burn, financing and dilution",
+    ])];
+    unresolvedQuestions = [
+      "Which genuinely comparable companies support the selected sales multiple?",
+      "When could reported revenue translate into durable positive free cash flow?",
+      "How much capital and dilution may be required before scale is reached?",
+    ];
   } else if (narrative.articleCount) {
     thesis = `${narrative.articleCount} recent public headlines from ${narrative.publisherCount} publishers provide a live macro lens. Coverage is most concentrated in ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample).`;
     const challenging = (research.articles ?? []).find((article) => articleDirection(article.title) === "challenges");
@@ -394,6 +427,8 @@ export function buildEducationalOpinion(
       ? `An independent educational opinion combining ${narrative.articleCount} current public headlines, market history and deterministic cash-flow, relative-value and risk models.`
       : valuationMethod === "Earnings-multiple scenario"
         ? `An independent educational opinion combining available public evidence, market history and an earnings-multiple scenario selected from the extracted data.`
+      : valuationMethod === "Revenue-multiple scenario"
+        ? `An independent educational opinion combining public evidence, market history and a revenue-multiple scenario selected because positive earnings and cash flow were unavailable.`
       : narrative.articleCount
       ? `An independent educational opinion built from ${narrative.articleCount} current public headlines, available market history and explicitly withheld financial valuation.`
       : "An independent educational opinion that separates observed facts, deterministic calculations and model interpretation.",

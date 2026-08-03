@@ -105,6 +105,7 @@ export function parseFundamentalSeries(series: FundamentalSeries[]) {
   if (shares && shares > 0) {
     fundamentals.sharesOutstanding = shares;
     if (freeCashFlow && freeCashFlow > 0) fundamentals.fcfPerShare = freeCashFlow / shares;
+    if (latestRevenue && latestRevenue > 0) fundamentals.revenuePerShare = latestRevenue / shares;
     fundamentals.netDebtPerShare = (debt - cash) / shares;
   }
   const eps = latest("annualDilutedEPS") ?? sumLatest("quarterlyDilutedEPS", 4);
@@ -212,6 +213,7 @@ async function fetchSecFundamentals(symbol: string) {
     if (shares?.val && shares.val > 0) {
       fundamentals.sharesOutstanding = shares.val;
       if (cfo?.val !== undefined && capex?.val !== undefined && cfo.val - capex.val > 0) fundamentals.fcfPerShare = (cfo.val - capex.val) / shares.val;
+      if (latestRevenue?.val && latestRevenue.val > 0) fundamentals.revenuePerShare = latestRevenue.val / shares.val;
       fundamentals.netDebtPerShare = ((debt?.val ?? 0) + (longDebt?.val ?? 0) - (cash?.val ?? 0)) / shares.val;
     }
     if (eps?.val && eps.val > 0) fundamentals.eps = eps.val;
@@ -422,13 +424,15 @@ export async function loadSecurity(symbol: string): Promise<SecurityResearch> {
         identity: true,
         price: price !== null,
         history: history.length >= 3,
-        fundamentals: fundamentalResult.modelReady,
+        fundamentals: Object.keys(fundamentalResult.fundamentals).length > 0,
         peers: false,
         articles: articles.length > 0,
       },
       note: fundamentalResult.modelReady
         ? "Public price history, secondary-source financial series and current headline coverage are available."
-        : "Public price and headline coverage are available. Valuation is withheld until model-ready reported fundamentals exist.",
+        : fundamentalResult.fundamentals.revenuePerShare
+          ? "Public price, revenue-per-share, balance-sheet and headline data are available. A relative revenue-multiple scenario may be used when positive cash flow and earnings are absent."
+          : "Public price and headline coverage are available. Valuation is withheld until a suitable reported cash-flow, earnings or revenue basis exists.",
     };
   } catch (error) {
     const articles = await fetchPublicArticles(normalized);
