@@ -101,47 +101,255 @@ const knowledgeOptions: Array<{ value: HypothesisProfile["understanding"]; label
   { value: "comfortable", label: "Comfortable", detail: "Emphasise model limits and counterarguments" },
 ];
 
-const quizItems = [
-  {
-    question: "What does a reverse DCF tell you?",
-    options: ["Whether to buy today", "Growth implied by a price and assumptions", "A guaranteed future price"],
-    correct: 1,
-    explanation: "Reverse DCF works backwards from price. It maps expectations; it does not predict an outcome.",
-  },
-  {
-    question: "Why can a strong company still have a demanding market price?",
-    options: ["Business quality and valuation are separate questions", "Strong companies cannot be expensive", "Price always follows last year's earnings"],
-    correct: 0,
-    explanation: "A price can already reflect optimistic assumptions, even when the underlying business is excellent.",
-  },
-  {
-    question: "What should Longview do when canonical fundamentals are missing?",
-    options: ["Invent a reasonable number", "Copy another company's data", "Withhold the affected model"],
-    correct: 2,
-    explanation: "A visible limitation is more educational and reliable than a fabricated input.",
-  },
-];
+type QuizItem = {
+  question: string;
+  options: string[];
+  correct: number;
+  explanation: string;
+};
 
-const narrativeQuizItems = [
-  {
-    question: "What does headline-theme entropy measure?",
-    options: ["Future returns", "How concentrated or dispersed the sampled topics are", "Whether an article is true"],
-    correct: 1,
-    explanation: "Entropy describes the distribution of topics. It does not measure business quality, truth or future returns.",
-  },
-  {
-    question: "How should a public headline be used?",
-    options: ["As a lead to inspect underlying evidence", "As a verified company fact", "As a trading signal"],
-    correct: 0,
-    explanation: "Headlines help researchers find questions and primary documents; they are not substitutes for either.",
-  },
-  {
-    question: "What should Longview do when canonical fundamentals are missing?",
-    options: ["Invent a reasonable number", "Copy another company's data", "Withhold the affected model"],
-    correct: 2,
-    explanation: "A visible limitation is more educational and reliable than a fabricated input.",
-  },
-];
+type AnalysisSummary = {
+  posture: string;
+  postureDetail: string;
+  researchFinding: string;
+  quantFinding: string;
+  combinedFinding: string;
+  methods: Array<{
+    name: string;
+    strategy: string;
+    question: string;
+    result: string;
+    interpretation: string;
+    limitation: string;
+  }>;
+};
+
+function money(research: SecurityResearch, value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "unavailable";
+  const currency = research.identity.currency === "—" ? "" : `${research.identity.currency} `;
+  return `${currency}${value.toFixed(value >= 100 ? 0 : 2)}`;
+}
+
+function buildAnalysisSummary(
+  research: SecurityResearch,
+  opinion: EducationalOpinion,
+  valuation: number | null,
+  relative: number | null,
+  reverseGrowth: number | null,
+  risk: ReturnType<typeof riskMetrics>,
+  narrative: NarrativeSignals,
+): AnalysisSummary {
+  const range = opinion.modelRange;
+  const price = research.price;
+  let posture = "VALUATION NOT ASSESSABLE";
+  let postureDetail = "Reported inputs are insufficient for a financial value comparison. This is a coverage conclusion, not a negative view of the company.";
+
+  if (range && price !== null) {
+    const gap = price / range.midpoint - 1;
+    if (price > range.high) posture = "PRICE ABOVE MODEL RANGE";
+    else if (price < range.low) posture = "PRICE BELOW MODEL RANGE";
+    else posture = "PRICE INSIDE MODEL RANGE";
+    postureDetail = `The reference price is ${Math.abs(gap * 100).toFixed(1)}% ${gap >= 0 ? "above" : "below"} the model midpoint of ${money(research, range.midpoint)} under the displayed assumptions. This is a model comparison—not a buy, sell or hold conclusion.`;
+  }
+
+  const researchFinding = narrative.articleCount
+    ? `${narrative.articleCount} current headlines from ${narrative.publisherCount} publishers concentrate most heavily on ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample). The scan maps what the public conversation emphasises; the linked articles still need to be checked against primary evidence.`
+    : "The public scan returned too little current coverage to support a narrative conclusion. Absence of headlines is not evidence that the company is low-risk or unimportant.";
+
+  const quantFinding = valuation !== null && range
+    ? `A five-year free-cash-flow DCF produces ${money(research, valuation)}, while seeded sensitivity produces a ${money(research, range.low)}–${money(research, range.high)} range. Reverse DCF estimates that the current price requires ${reverseGrowth === null ? "an unresolved" : `${(reverseGrowth * 100).toFixed(1)}% annual`} free-cash-flow growth under the displayed discount and terminal-growth assumptions.`
+    : risk
+      ? `No defensible financial valuation could be run. The supported market-behaviour model uses ${research.priceHistory.length} ${research.historyInterval ?? "monthly"} observations and measures ${(risk.volatility * 100).toFixed(1)}% annualised volatility with a ${(risk.maxDrawdown * 100).toFixed(1)}% maximum observed drawdown. These are historical descriptors, not fair value.`
+      : "Neither model-ready fundamentals nor enough price history were available. Longview limits the quantitative conclusion to coverage and narrative measurements.";
+
+  const combinedFinding = range
+    ? `${posture}. Secondary research supplies context and counter-questions; the valuation posture comes only from the deterministic model and its visible assumptions.`
+    : `${posture}. The evidence can describe attention and observed market behaviour, but it cannot establish whether the security is overvalued or undervalued.`;
+
+  const methods: AnalysisSummary["methods"] = valuation !== null && range ? [
+    {
+      name: "Reverse DCF",
+      strategy: "Expectations investing",
+      question: "What cash-flow growth is embedded in today’s price?",
+      result: reverseGrowth === null ? "No stable solution" : `${(reverseGrowth * 100).toFixed(1)}% annual FCF growth`,
+      interpretation: "Higher implied growth means the market price requires more future execution under these assumptions.",
+      limitation: "Highly sensitive to starting cash flow, discount rate and terminal growth.",
+    },
+    {
+      name: "Scenario DCF",
+      strategy: "Intrinsic-value sensitivity",
+      question: "What is the present value of modelled future free cash flow?",
+      result: money(research, valuation),
+      interpretation: price === null ? "No price comparison is available." : postureDetail,
+      limitation: "A DCF is a conditional calculation, not an observed fact or forecast guarantee.",
+    },
+    {
+      name: "Seeded Monte Carlo",
+      strategy: "Probabilistic sensitivity analysis",
+      question: "How widely does value move when assumptions vary together?",
+      result: `${money(research, range.low)}–${money(research, range.high)} (P10–P90)`,
+      interpretation: "The width of the range shows model uncertainty and assumption sensitivity.",
+      limitation: "The distribution reflects chosen input ranges, not real-world forecast probabilities.",
+    },
+    {
+      name: "P/E cross-check",
+      strategy: "Relative valuation",
+      question: "What value follows from earnings and a comparison multiple?",
+      result: money(research, relative),
+      interpretation: "This checks whether an earnings-based lens broadly agrees with the cash-flow model.",
+      limitation: "The selected multiple may not match the company’s growth, quality or cycle.",
+    },
+    {
+      name: "Factor and risk lens",
+      strategy: "Systematic characteristics",
+      question: "What historical traits describe the security?",
+      result: risk ? `${(risk.volatility * 100).toFixed(1)}% volatility · ${(risk.maxDrawdown * 100).toFixed(1)}% max drawdown` : "Not enough history",
+      interpretation: "Momentum, quality, value and volatility are descriptors used to compare characteristics.",
+      limitation: "Transparent proxies are not a full factor regression or trading signal.",
+    },
+  ] : [
+    {
+      name: "Public coverage map",
+      strategy: "Narrative research",
+      question: "Which topics and publishers shape the current public conversation?",
+      result: `${narrative.articleCount} headlines · ${narrative.publisherCount} publishers`,
+      interpretation: `The dominant sampled theme is ${narrative.dominantTheme.toLowerCase()}.`,
+      limitation: "Headline metadata is a research lead, not verified company evidence.",
+    },
+    {
+      name: "Shannon theme entropy",
+      strategy: "Information concentration",
+      question: "Is attention concentrated in one theme or spread across several?",
+      result: narrative.articleCount ? `${narrative.themeEntropy.toFixed(2)} on a 0–1 scale` : "No usable sample",
+      interpretation: "Values nearer 1 indicate a more evenly distributed topic mix.",
+      limitation: "Entropy measures distribution—not truth, sentiment quality or future return.",
+    },
+    {
+      name: "Historical risk",
+      strategy: "Market-behaviour statistics",
+      question: "How has the available price series behaved?",
+      result: risk ? `${(risk.volatility * 100).toFixed(1)}% volatility · ${(risk.maxDrawdown * 100).toFixed(1)}% max drawdown` : "Not enough history",
+      interpretation: "Volatility and drawdown quantify realised variation and loss from a prior peak.",
+      limitation: "A short or unusual listing history is unstable and does not establish fair value.",
+    },
+    {
+      name: "Model eligibility test",
+      strategy: "Quantitative model governance",
+      question: "Do the available inputs justify a financial valuation?",
+      result: "DCF withheld",
+      interpretation: "Missing cash flow or earnings prevents an honest over/undervaluation conclusion.",
+      limitation: "Withholding is deliberately conservative; it is not a view on company quality.",
+    },
+  ];
+
+  return { posture, postureDetail, researchFinding, quantFinding, combinedFinding, methods };
+}
+
+function buildContextualQuiz(
+  research: SecurityResearch,
+  analysis: AnalysisSummary,
+  reverseGrowth: number | null,
+  risk: ReturnType<typeof riskMetrics>,
+  narrative: NarrativeSignals,
+): QuizItem[] {
+  if (research.identity.symbol === "D05.SI") {
+    return [
+      {
+        question: "Why does Longview withhold its standard industrial-company DCF for DBS?",
+        options: ["Bank deposits, capital and credit losses require a different valuation structure", "The share price is too high", "Banks cannot be analysed quantitatively"],
+        correct: 0,
+        explanation: "For a bank, deposits and regulatory capital are operating inputs. Industrial free-cash-flow definitions can therefore mislead.",
+      },
+      {
+        question: "Which methods would be more suitable follow-up work for a bank?",
+        options: ["Residual income and price-to-book tested against sustainable ROE", "Satellite-launch statistics", "A candlestick pattern alone"],
+        correct: 0,
+        explanation: "Residual-income and book-value methods connect bank value to capital, returns on equity and credit assumptions.",
+      },
+      {
+        question: "What does the available price-history model contribute?",
+        options: [
+          risk ? `${(risk.volatility * 100).toFixed(1)}% volatility and ${(risk.maxDrawdown * 100).toFixed(1)}% maximum drawdown` : "Not enough observations",
+          "A guaranteed return forecast",
+          "A suitability assessment",
+        ],
+        correct: 0,
+        explanation: "Historical risk describes observed price behaviour; it does not replace a bank-appropriate valuation.",
+      },
+    ];
+  }
+
+  if (research.coverage.fundamentals && reverseGrowth !== null) {
+    return [
+      {
+        question: `What does ${research.identity.name}’s reverse DCF currently estimate?`,
+        options: [`${(reverseGrowth * 100).toFixed(1)}% annual FCF growth is implied`, "A guaranteed future return", "The analyst-consensus target price"],
+        correct: 0,
+        explanation: `The calculation works backwards from ${research.identity.symbol}’s price and the displayed assumptions; it does not predict the future.`,
+      },
+      {
+        question: `How does ${research.identity.symbol}’s price compare with Longview’s model range?`,
+        options: [analysis.posture, "The evidence proves the stock should be bought", "Secondary headlines determine fair value"],
+        correct: 0,
+        explanation: analysis.postureDetail,
+      },
+      {
+        question: "What did the historical risk model actually measure?",
+        options: [
+          risk ? `${(risk.volatility * 100).toFixed(1)}% annualised volatility and ${(risk.maxDrawdown * 100).toFixed(1)}% maximum drawdown` : "Not enough price history",
+          "The probability of a profitable investment",
+          "The company’s competitive moat",
+        ],
+        correct: 0,
+        explanation: "Risk statistics summarise the observed price series. They do not forecast return or assess suitability.",
+      },
+    ];
+  }
+
+  if (!narrative.articleCount) {
+    return [
+      {
+        question: `What does an empty current headline sample for ${research.identity.name} establish?`,
+        options: ["Only that this scan returned no usable current coverage", "That the company has no risks", "That the security is undervalued"],
+        correct: 0,
+        explanation: "Missing secondary coverage is a data limitation, not evidence about quality, risk or value.",
+      },
+      {
+        question: "Which quantitative conclusion remains valid without model-ready fundamentals?",
+        options: ["Only supported historical price-behaviour statistics", "A fabricated DCF target", "A guaranteed directional forecast"],
+        correct: 0,
+        explanation: "Longview can calculate from observed price history, but it cannot turn that history into intrinsic value.",
+      },
+      {
+        question: `Why is ${research.identity.symbol} labelled “valuation not assessable”?`,
+        options: ["Suitable reported valuation inputs are unavailable", "The company is automatically unattractive", "The price must fall"],
+        correct: 0,
+        explanation: "The label describes model eligibility, not a directional view.",
+      },
+    ];
+  }
+
+  return [
+    {
+      question: `What dominated the sampled public coverage of ${research.identity.name}?`,
+      options: [narrative.dominantTheme, "A verified intrinsic value", "The learner’s personal risk tolerance"],
+      correct: 0,
+      explanation: `${narrative.dominantTheme} represented ${Math.round(narrative.dominantShare * 100)}% of ${narrative.articleCount} sampled headlines.`,
+    },
+    {
+      question: `What does the ${narrative.themeEntropy.toFixed(2)} theme-entropy reading mean?`,
+      options: ["How dispersed the sampled topics are", "The probability of a price increase", "Whether the articles are true"],
+      correct: 0,
+      explanation: "Entropy measures the distribution of themes only. It is not sentiment, truth or valuation.",
+    },
+    {
+      question: `Why is ${research.identity.symbol} labelled “valuation not assessable”?`,
+      options: ["Model-ready reported inputs are missing", "The company is automatically unattractive", "Longview predicts the price will fall"],
+      correct: 0,
+      explanation: "Without suitable cash flow or earnings inputs, claiming overvaluation or undervaluation would fabricate precision.",
+    },
+  ];
+}
 
 export function ResearchWorkspace({ symbol }: { symbol: string }) {
   const [research, setResearch] = useState<SecurityResearch | null>(null);
@@ -243,8 +451,16 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
     () => research ? buildEducationalOpinion(research, assumptions, profile) : null,
     [research, assumptions, profile],
   );
-
-  const activeQuizItems = valuation === null ? narrativeQuizItems : quizItems;
+  const analysis = useMemo(
+    () => research && opinion
+      ? buildAnalysisSummary(research, opinion, valuation, relative, reverseGrowth, risk, narrative)
+      : null,
+    [research, opinion, valuation, relative, reverseGrowth, risk, narrative],
+  );
+  const activeQuizItems = useMemo(
+    () => research && analysis ? buildContextualQuiz(research, analysis, reverseGrowth, risk, narrative) : [],
+    [research, analysis, reverseGrowth, risk, narrative],
+  );
   const score = activeQuizItems.reduce((total, item, index) => total + Number(quiz[index] === item.correct), 0);
   const quizComplete = Object.keys(quiz).length === activeQuizItems.length;
 
@@ -341,7 +557,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
     );
   }
 
-  if (!research || !opinion) {
+  if (!research || !opinion || !analysis) {
     return (
       <main className="learning-workspace">
         <div className="loading-desk"><LoaderCircle className="spin" /><span>RESOLVING SECURITY</span><h1>Checking identity, coverage and available evidence…</h1></div>
@@ -378,20 +594,6 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
         </div>
       </section>
 
-      <div className="learning-toolbar">
-        <SecuritySearch compact />
-        <button type="button" className="text-button" onClick={resetSession}><RefreshCcw /> Restart lesson</button>
-        <button
-          type="button"
-          className="text-button"
-          disabled={!opinionUnlocked}
-          onClick={() => window.print()}
-          title={opinionUnlocked ? "Print or save the complete opinion as PDF" : "Complete the education debrief to unlock export"}
-        >
-          {opinionUnlocked ? <FileDown /> : <LockKeyhole />} Export opinion
-        </button>
-      </div>
-
       <nav className="journey-nav" aria-label="Learning stages">
         {stages.map((stage, index) => {
           const available = index <= completedThrough;
@@ -410,6 +612,20 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           );
         })}
       </nav>
+
+      <div className="learning-toolbar">
+        <SecuritySearch compact />
+        <button type="button" className="text-button" onClick={resetSession}><RefreshCcw /> Restart lesson</button>
+        <button
+          type="button"
+          className="text-button"
+          disabled={!opinionUnlocked}
+          onClick={() => window.print()}
+          title={opinionUnlocked ? "Print or save the complete opinion as PDF" : "Complete the education debrief to unlock export"}
+        >
+          {opinionUnlocked ? <FileDown /> : <LockKeyhole />} Export opinion
+        </button>
+      </div>
 
       {activeStage === 0 && (
         <StageShell
@@ -579,6 +795,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           intro="Longview runs its default methods automatically. You can inspect advanced sensitivities, but no configuration is required to complete the lesson."
           dark
         >
+          <QuantMethodGuide analysis={analysis} />
           <div className="quant-readout-grid">
             {valuation !== null ? <>
               <QuantReadout label="Market-implied FCF growth" value={reverseGrowth === null ? "Unavailable" : `${(reverseGrowth * 100).toFixed(1)}%`} detail="Solved backwards from the reference price" tone="lime" />
@@ -731,7 +948,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           title={opinion.title}
           intro={opinion.dek}
         >
-          <OpinionHeader research={research} opinion={opinion} formatMoney={formatMoney} />
+          <OpinionHeader research={research} opinion={opinion} analysis={analysis} formatMoney={formatMoney} />
           <div className="opinion-columns">
             <article className="opinion-thesis">
               <span>THE THESIS</span>
@@ -759,7 +976,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
               <button type="button" onClick={() => advance(5)}>Begin education debrief <ArrowRight /></button>
             </div>
           ) : (
-            <FullOpinion research={research} opinion={opinion} assumptions={assumptions} formatMoney={formatMoney} />
+            <FullOpinion research={research} opinion={opinion} analysis={analysis} assumptions={assumptions} formatMoney={formatMoney} />
           )}
 
           <InstitutionalLens
@@ -796,6 +1013,8 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
               <p>{opinion.modelOpinion}</p>
             </article>
           </div>
+
+          <DebriefFindings analysis={analysis} />
 
           <div className="lesson-grid">
             {valuation !== null ? <>
@@ -836,13 +1055,13 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           </section>
 
           {quizComplete && (
-            <div className={score === quizItems.length ? "unlock-banner unlocked" : "unlock-banner"}>
-              {score === quizItems.length ? <CheckCircle2 /> : <CircleHelp />}
+            <div className={score === activeQuizItems.length ? "unlock-banner unlocked" : "unlock-banner"}>
+              {score === activeQuizItems.length ? <CheckCircle2 /> : <CircleHelp />}
               <div>
                 <small>{score}/3 CONCEPTS UNDERSTOOD</small>
-                <h3>{score === quizItems.length ? "The complete Educational Opinion Piece is unlocked." : "Revisit the highlighted explanations and try again."}</h3>
+                <h3>{score === activeQuizItems.length ? "The complete Educational Opinion Piece is unlocked." : "Revisit the highlighted explanations and try again."}</h3>
               </div>
-              {score === quizItems.length && <button type="button" onClick={() => advance(4)}>Read and export the complete opinion <ArrowRight /></button>}
+              {score === activeQuizItems.length && <button type="button" onClick={() => advance(4)}>Read and export the complete opinion <ArrowRight /></button>}
             </div>
           )}
 
@@ -859,7 +1078,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
 
       {opinionUnlocked && (
         <div className="print-opinion">
-          <FullOpinion research={research} opinion={opinion} assumptions={assumptions} formatMoney={formatMoney} print />
+          <FullOpinion research={research} opinion={opinion} analysis={analysis} assumptions={assumptions} formatMoney={formatMoney} print />
         </div>
       )}
     </main>
@@ -954,6 +1173,42 @@ function NarrativeBriefing({ narrative, articles }: { narrative: NarrativeSignal
   );
 }
 
+function QuantMethodGuide({ analysis }: { analysis: AnalysisSummary }) {
+  return (
+    <section className="quant-method-guide">
+      <header>
+        <div><span>QUANT PLAYBOOK</span><h3>What is running—and what each method means.</h3></div>
+        <p>Each model answers a different question. Longview shows the strategy, output, interpretation and failure mode before presenting the numbers.</p>
+      </header>
+      <div>
+        {analysis.methods.map((method, index) => (
+          <article key={method.name}>
+            <small>0{index + 1} · {method.strategy}</small>
+            <h4>{method.name}</h4>
+            <p><strong>Question</strong>{method.question}</p>
+            <p><strong>Current result</strong>{method.result}</p>
+            <p><strong>How to read it</strong>{method.interpretation}</p>
+            <p className="method-limit"><strong>Failure mode</strong>{method.limitation}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DebriefFindings({ analysis }: { analysis: AnalysisSummary }) {
+  return (
+    <section className="debrief-findings">
+      <header><span>WHAT THE ANALYSIS ACTUALLY FOUND</span><h2>Research context, quantitative result, combined interpretation.</h2></header>
+      <div>
+        <article><Newspaper /><span>SECONDARY RESEARCH</span><p>{analysis.researchFinding}</p></article>
+        <article><Binary /><span>QUANTITATIVE RESULT</span><p>{analysis.quantFinding}</p></article>
+        <article><Scale /><span>COMBINED READING</span><h3>{analysis.posture}</h3><p>{analysis.combinedFinding}</p></article>
+      </div>
+    </section>
+  );
+}
+
 function QuantReadout({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "lime" | "blue" | "amber" | "white" }) {
   return <article className={`quant-readout tone-${tone}`}><span>{label}</span><strong>{value}</strong><p>{detail}</p></article>;
 }
@@ -961,10 +1216,12 @@ function QuantReadout({ label, value, detail, tone }: { label: string; value: st
 function OpinionHeader({
   research,
   opinion,
+  analysis,
   formatMoney,
 }: {
   research: SecurityResearch;
   opinion: EducationalOpinion;
+  analysis: AnalysisSummary;
   formatMoney: (value: number | null) => string;
 }) {
   return (
@@ -975,9 +1232,10 @@ function OpinionHeader({
         <p>Model version 1.0 · {research.asOf} · {opinion.coverage} coverage</p>
       </div>
       <div className="opinion-range">
-        <small>MODEL-DERIVED RANGE</small>
-        <strong>{opinion.modelRange ? `${formatMoney(opinion.modelRange.low)}–${formatMoney(opinion.modelRange.high)}` : "Withheld"}</strong>
-        <span>{opinion.modelRange ? `Mechanical midpoint ${formatMoney(opinion.modelRange.midpoint)}` : "Insufficient model-ready evidence"}</span>
+        <small>VALUATION POSTURE</small>
+        <strong>{analysis.posture}</strong>
+        <span>{analysis.postureDetail}</span>
+        {opinion.modelRange && <i>Model band: {formatMoney(opinion.modelRange.low)}–{formatMoney(opinion.modelRange.high)}</i>}
       </div>
       <div className="opinion-disclosure">
         <ShieldCheck />
@@ -990,12 +1248,14 @@ function OpinionHeader({
 function FullOpinion({
   research,
   opinion,
+  analysis,
   assumptions,
   formatMoney,
   print = false,
 }: {
   research: SecurityResearch;
   opinion: EducationalOpinion;
+  analysis: AnalysisSummary;
   assumptions: ValuationAssumptions;
   formatMoney: (value: number | null) => string;
   print?: boolean;
@@ -1008,10 +1268,16 @@ function FullOpinion({
       </header>
 
       <section className="opinion-summary-grid">
-        <div><small>EDUCATIONAL REFLECTION</small><strong>{opinion.hypothesisStatus}</strong></div>
+        <div><small>VALUATION POSTURE</small><strong>{analysis.posture}</strong></div>
         <div><small>MODEL-DERIVED RANGE</small><strong>{opinion.modelRange ? `${formatMoney(opinion.modelRange.low)}–${formatMoney(opinion.modelRange.high)}` : "Withheld"}</strong></div>
         <div><small>IMPLIED FCF GROWTH</small><strong>{opinion.impliedGrowth === null ? "Unavailable" : `${(opinion.impliedGrowth * 100).toFixed(1)}%`}</strong></div>
         <div><small>COVERAGE</small><strong>{opinion.coverage}</strong></div>
+      </section>
+
+      <section className="opinion-executive-reading">
+        <span>EXECUTIVE INTERPRETATION</span>
+        <h3>{analysis.posture}</h3>
+        <p>{analysis.postureDetail}</p>
       </section>
 
       <section className="opinion-body-grid">
@@ -1024,15 +1290,41 @@ function FullOpinion({
         <h3>{opinion.modelOpinion}</h3>
       </section>
 
+      <section className="opinion-explainer">
+        <header><span>HOW THE CONCLUSION WAS BUILT</span><h3>What the public research and quantitative work each contribute.</h3></header>
+        <div>
+          <article><small>SECONDARY RESEARCH</small><p>{analysis.researchFinding}</p></article>
+          <article><small>QUANTITATIVE RESULT</small><p>{analysis.quantFinding}</p></article>
+          <article><small>COMBINED READING</small><p>{analysis.combinedFinding}</p></article>
+        </div>
+      </section>
+
+      <section className="opinion-methods">
+        <header><span>QUANTITATIVE METHOD LEDGER</span><h3>Method, purpose, result and limitation.</h3></header>
+        {analysis.methods.map((method) => (
+          <article key={method.name}>
+            <div><small>{method.strategy}</small><strong>{method.name}</strong></div>
+            <p><small>QUESTION</small>{method.question}</p>
+            <p><small>RESULT</small>{method.result}</p>
+            <p><small>INTERPRETATION</small>{method.interpretation}</p>
+            <p><small>LIMITATION</small>{method.limitation}</p>
+          </article>
+        ))}
+      </section>
+
       <section className="opinion-detail-grid">
         <div><span>VARIABLES TO MONITOR</span><ol>{opinion.variablesToMonitor.map((item) => <li key={item}>{item}</li>)}</ol></div>
         <div><span>UNRESOLVED QUESTIONS</span><ol>{opinion.unresolvedQuestions.map((item) => <li key={item}>{item}</li>)}</ol></div>
       </section>
 
-      <section className="opinion-evidence-table">
-        <header><span>LAYER</span><span>ITEM</span><span>DIRECTION</span><span>SOURCE</span></header>
+      <section className="opinion-evidence-explained">
+        <header><span>EVIDENCE EXPLAINED</span><h3>What each item contributes to the conclusion.</h3></header>
         {opinion.evidence.map((item) => (
-          <div key={item.id}><span>{item.layer}</span><strong>{item.title}</strong><i>{item.direction}</i><small>{item.sourceLabel}</small></div>
+          <article key={item.id}>
+            <div><small>{item.layer} · {item.direction}</small><strong>{item.title}</strong></div>
+            <p>{item.detail}</p>
+            <footer>{item.sourceLabel} · {item.asOf}</footer>
+          </article>
         ))}
       </section>
 

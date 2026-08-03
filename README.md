@@ -74,15 +74,15 @@ The app runs only the methods supported by the available evidence:
 - value, quality, momentum, and low-volatility proxies; and
 - historical return, volatility, and drawdown measures.
 
-For a mature listed company with sufficient public fundamentals, these models run automatically. For a new listing, private-company query, or incomplete dataset, the lab instead measures the public narrative and the price history that actually exists, then explains why valuation is withheld. Advanced controls appear only when they have a real function. A bank sample demonstrates that a generic free-cash-flow DCF should not be forced onto the wrong business model.
+Every result now appears in a **Quant Playbook** that identifies the strategy, the question it answers, its current output, the correct interpretation, and its main failure mode. For a mature listed company with sufficient annual or trailing four-quarter public fundamentals, the valuation models run automatically. For a new listing, private-company query, or incomplete dataset, the lab instead measures the public narrative and the price history that actually exists, then explains why valuation is withheld. Advanced controls appear only when they have a real function. A bank sample demonstrates that a generic free-cash-flow DCF should not be forced onto the wrong business model.
 
 ### 5. Independent Educational Opinion Piece
 
-Longview synthesises a thesis, counter-thesis, coverage grade, risks, evidence ledger, and standardised model opinion. A dated mechanical model range appears only when the inputs support one; otherwise the piece explicitly states the model boundary and publishes a narrative-and-market-behaviour lesson instead. No output is a recommended target price.
+Longview synthesises a thesis, counter-thesis, coverage grade, risks, evidence ledger, and standardised model opinion. The header states whether the reference price is above, inside or below the displayed model range—or that valuation is not assessable. The full piece explains what secondary research contributed, what every quant method found, how those strands combine, and why each evidence item matters. A dated mechanical range appears only when the inputs support one; otherwise the piece explicitly states the model boundary and publishes a narrative-and-market-behaviour lesson instead. No output is a recommended target price.
 
 ### 6. Educational debrief
 
-The learner sees how their opening hypothesis survived or changed, why each method was used, where uncertainty remains, and how an institutional analyst would challenge the result. A three-question comprehension check unlocks the complete printable opinion.
+The learner sees how their opening hypothesis survived or changed, what the secondary research found, what the quantitative strategies show, where uncertainty remains, and how an institutional analyst would challenge the result. The three-question comprehension check is generated deterministically from the selected company’s actual narrative, valuation and risk results, so the questions and answers change with the analysis while remaining reproducible.
 
 Risks, limitations, source dates, and the non-reliance notice are never hidden behind the gate.
 

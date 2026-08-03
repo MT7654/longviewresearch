@@ -77,7 +77,7 @@ For the arbitrary-stock path, show the linked publisher coverage, theme grouping
 
 ### 2:00–2:45 — Automatic quant lab
 
-Show reverse DCF, scenario DCF, relative value, seeded Monte Carlo range, factor proxies, and historical risk.
+Start with the Quant Playbook. Show how each method names its institutional strategy, question, current result, interpretation and failure mode. Then show reverse DCF, scenario DCF, relative value, seeded Monte Carlo range, factor proxies, and historical risk.
 
 Open advanced assumptions briefly and move one control.
 
@@ -95,10 +95,12 @@ Open the opinion preview.
 
 Show:
 
+- the explicit price-versus-model posture;
 - coverage grade;
 - dated model range;
 - thesis and counter-thesis;
 - standardised model opinion;
+- the secondary-research and quantitative synthesis; and
 - risks and limitations.
 
 Explain that the complete printable publication is gated by comprehension, not payment or engagement bait.
@@ -107,7 +109,7 @@ Explain that the complete printable publication is gated by comprehension, not p
 
 Complete the three questions.
 
-Show how the debrief reconnects the evidence and models to the learner's starting hypothesis. Unlock and print the complete Independent Educational Opinion Piece.
+Show how the debrief reconnects the evidence and models to the learner's starting hypothesis. Point out that its three questions use the selected company’s actual implied growth, model posture, narrative themes and risk figures rather than a fixed quiz. Unlock and print the complete Independent Educational Opinion Piece.
 
 Close with:
 

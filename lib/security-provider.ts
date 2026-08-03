@@ -76,15 +76,29 @@ export function parseFundamentalSeries(series: FundamentalSeries[]) {
   }
   const latestPoint = (type: string) => values.get(type)?.at(-1);
   const latest = (type: string) => latestPoint(type)?.reportedValue?.raw;
+  const sumLatest = (type: string, count: number) => {
+    const points = values.get(type) ?? [];
+    if (points.length < count) return undefined;
+    return points.slice(-count).reduce((total, point) => total + (point.reportedValue?.raw ?? 0), 0);
+  };
   const shares = latest("annualDilutedAverageShares") ?? latest("quarterlyDilutedAverageShares");
-  const freeCashFlow = latest("annualFreeCashFlow");
-  const revenue = values.get("annualTotalRevenue") ?? [];
-  const latestRevenue = revenue.at(-1)?.reportedValue?.raw;
-  const previousRevenue = revenue.at(-2)?.reportedValue?.raw;
-  const debt = latest("annualTotalDebt") ?? 0;
-  const cash = latest("annualCashCashEquivalentsAndShortTermInvestments") ?? latest("annualCashAndCashEquivalents") ?? 0;
-  const operatingIncome = latest("annualOperatingIncome");
-  const equity = latest("annualStockholdersEquity");
+  const freeCashFlow = latest("annualFreeCashFlow") ?? sumLatest("quarterlyFreeCashFlow", 4);
+  const annualRevenue = values.get("annualTotalRevenue") ?? [];
+  const latestRevenue = annualRevenue.at(-1)?.reportedValue?.raw ?? sumLatest("quarterlyTotalRevenue", 4);
+  const previousRevenue = annualRevenue.at(-2)?.reportedValue?.raw ?? (() => {
+    const quarterly = values.get("quarterlyTotalRevenue") ?? [];
+    if (quarterly.length < 8) return undefined;
+    return quarterly.slice(-8, -4).reduce((total, point) => total + (point.reportedValue?.raw ?? 0), 0);
+  })();
+  const debt = latest("annualTotalDebt") ?? latest("quarterlyTotalDebt") ?? 0;
+  const cash =
+    latest("annualCashCashEquivalentsAndShortTermInvestments") ??
+    latest("quarterlyCashCashEquivalentsAndShortTermInvestments") ??
+    latest("annualCashAndCashEquivalents") ??
+    latest("quarterlyCashAndCashEquivalents") ??
+    0;
+  const operatingIncome = latest("annualOperatingIncome") ?? sumLatest("quarterlyOperatingIncome", 4);
+  const equity = latest("annualStockholdersEquity") ?? latest("quarterlyStockholdersEquity");
   const investedCapital = debt + (equity ?? 0) - cash;
 
   const fundamentals: Fundamentals = {};
@@ -93,7 +107,7 @@ export function parseFundamentalSeries(series: FundamentalSeries[]) {
     if (freeCashFlow && freeCashFlow > 0) fundamentals.fcfPerShare = freeCashFlow / shares;
     fundamentals.netDebtPerShare = (debt - cash) / shares;
   }
-  const eps = latest("annualDilutedEPS");
+  const eps = latest("annualDilutedEPS") ?? sumLatest("quarterlyDilutedEPS", 4);
   if (eps && eps > 0) fundamentals.eps = eps;
   if (latestRevenue && previousRevenue && previousRevenue > 0) fundamentals.revenueGrowth = latestRevenue / previousRevenue - 1;
   if (operatingIncome && latestRevenue && latestRevenue > 0) fundamentals.operatingMargin = operatingIncome / latestRevenue;
@@ -102,6 +116,7 @@ export function parseFundamentalSeries(series: FundamentalSeries[]) {
   const dates = [...values.values()].flatMap((points) => points.map((point) => point.asOfDate ?? "")).filter(Boolean).sort();
   const modelAsOf =
     latestPoint("annualFreeCashFlow")?.asOfDate ??
+    latestPoint("quarterlyFreeCashFlow")?.asOfDate ??
     latestPoint("annualDilutedEPS")?.asOfDate ??
     latestPoint("annualTotalRevenue")?.asOfDate ??
     dates.at(-1) ??
@@ -116,11 +131,19 @@ async function fetchPublicFundamentals(symbol: string) {
     "annualTotalRevenue",
     "annualDilutedAverageShares",
     "quarterlyDilutedAverageShares",
+    "quarterlyFreeCashFlow",
+    "quarterlyDilutedEPS",
+    "quarterlyTotalRevenue",
     "annualTotalDebt",
+    "quarterlyTotalDebt",
     "annualCashCashEquivalentsAndShortTermInvestments",
+    "quarterlyCashCashEquivalentsAndShortTermInvestments",
     "annualCashAndCashEquivalents",
+    "quarterlyCashAndCashEquivalents",
     "annualOperatingIncome",
+    "quarterlyOperatingIncome",
     "annualStockholdersEquity",
+    "quarterlyStockholdersEquity",
   ].join(",");
   const period2 = Math.floor(Date.now() / 1000) + 86400;
   const period1 = period2 - 6 * 365 * 86400;

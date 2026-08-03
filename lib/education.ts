@@ -304,10 +304,31 @@ export function buildEducationalOpinion(
 
   if (modelRange && impliedGrowth !== null) {
     const demanding = impliedGrowth > 0.2;
-    modelOpinion = demanding
-      ? "The model describes meaningful operating strengths while the reference price embeds demanding cash-flow growth under the stated assumptions. The educational conclusion is mixed rather than directional."
-      : "The reference price embeds moderate cash-flow growth under the stated assumptions, but the wide model range shows that small changes in growth and discount rates materially affect the result.";
+    const pricePosture = research.price !== null && research.price > modelRange.high
+      ? "above"
+      : research.price !== null && research.price < modelRange.low
+        ? "below"
+        : "inside";
+    modelOpinion = `Under the displayed assumptions, the reference price sits ${pricePosture} the model-derived range and reverse DCF implies ${(impliedGrowth * 100).toFixed(1)}% annual free-cash-flow growth. ${demanding ? "That is a demanding execution hurdle." : "That is a more moderate embedded expectation."} This is a conditional model comparison, not a transaction conclusion.`;
     status = demanding ? "Mixed evidence" : "Partially supported";
+    if (!context && narrative.articleCount) {
+      thesis = `${narrative.articleCount} current headlines from ${narrative.publisherCount} publishers provide a live context map, led by ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample). The financial model separately tests whether current price expectations look demanding under stated cash-flow assumptions.`;
+      const challenging = (research.articles ?? []).find((article) => articleDirection(article.title) === "challenges");
+      counterThesis = challenging
+        ? `The public sample contains an explicit counter-signal—“${challenging.title}” (${challenging.publisher})—while the model remains highly sensitive to discount rate, growth and starting cash flow.`
+        : "The sampled headlines contain little explicit counter-evidence, but that may reflect source selection. The model range itself remains wide and assumption-sensitive.";
+      variablesToMonitor = [...new Set([
+        ...narrative.themes.slice(0, 3).map((item) => item.theme),
+        "Free cash flow per share",
+        "Operating margin and return on capital",
+        "Model-implied growth versus reported growth",
+      ])];
+      unresolvedQuestions = [
+        "Do the linked articles trace their claims to issuer filings or primary data?",
+        "How durable are the cash flows used as the model starting point?",
+        "Which discount rate and comparison multiple best fit the company’s risk and growth?",
+      ];
+    }
   } else if (research.identity.symbol === "D05.SI") {
     modelOpinion = "The most important educational conclusion is methodological: a bank should not be forced through an industrial-company free-cash-flow model.";
     status = "Presently unanswerable";
@@ -337,8 +358,10 @@ export function buildEducationalOpinion(
 
   return {
     title: `${research.identity.name} through a quant lens`,
-    dek: narrative.articleCount
-      ? `An independent educational opinion built from ${narrative.articleCount} current public headlines, available market history and explicitly withheld financial models.`
+    dek: modelRange
+      ? `An independent educational opinion combining ${narrative.articleCount} current public headlines, market history and deterministic cash-flow, relative-value and risk models.`
+      : narrative.articleCount
+      ? `An independent educational opinion built from ${narrative.articleCount} current public headlines, available market history and explicitly withheld financial valuation.`
       : "An independent educational opinion that separates observed facts, deterministic calculations and model interpretation.",
     coverage,
     hypothesisStatus: status,
