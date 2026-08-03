@@ -39,7 +39,7 @@ flowchart LR
     B --> C["Layered evidence review"]
     C --> D["Evidence-aware quant lab"]
     D --> E["Educational opinion"]
-    E --> F["Debrief + export"]
+    E --> F["Debrief + full rationale"]
 ```
 
 ### 1. Starting point

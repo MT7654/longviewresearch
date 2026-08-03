@@ -27,7 +27,6 @@ import {
   CircleHelp,
   Database,
   ExternalLink,
-  FileDown,
   FlaskConical,
   Gauge,
   Lightbulb,
@@ -118,6 +117,11 @@ type AnalysisSummary = {
   researchFinding: string;
   quantFinding: string;
   combinedFinding: string;
+  evidenceBalance: string;
+  macroAnalysis: string;
+  companyAnalysis: string;
+  financialTransmission: string;
+  companyHeadlines: string[];
   sectorSummary: string;
   sectorMeaning: string;
   sectorSignals: Array<{ theme: string; share: string; headlines: string[]; meaning: string }>;
@@ -130,6 +134,29 @@ type AnalysisSummary = {
     limitation: string;
   }>;
 };
+
+type HeadlineSignal = "innovation" | "demand" | "cost" | "valuation" | "competition" | "policy";
+
+const headlineSignalPatterns: Record<HeadlineSignal, RegExp> = {
+  innovation: /\b(ai|artificial intelligence|launch|release|product|platform|breakthrough|technology|chip|cloud|hardware|software)\b/i,
+  demand: /\b(demand|orders?|sales|growth|adoption|customers?|backlog|market share|expansion)\b/i,
+  cost: /\b(costs?|margin|pricing|prices?|tariffs?|shortage|supply|spending|capex|expense)\b/i,
+  valuation: /\b(valuation|valuations|earnings|stock|shares?|market cap|cautious|bubble|surging|rally|down)\b/i,
+  competition: /\b(competition|competitor|rival|versus|vs\.?|shakeout|loses? share)\b/i,
+  policy: /\b(regulation|regulatory|policy|government|approval|antitrust|ban|export controls?)\b/i,
+};
+
+function detectedHeadlineSignals(titles: string[]) {
+  return (Object.entries(headlineSignalPatterns) as Array<[HeadlineSignal, RegExp]>)
+    .filter(([, pattern]) => titles.some((title) => pattern.test(title)))
+    .map(([signal]) => signal);
+}
+
+function joinQuoted(titles: string[]) {
+  if (!titles.length) return "";
+  const shortened = titles.map((title) => `“${title.length > 105 ? `${title.slice(0, 102)}…` : title}”`);
+  return shortened.length === 1 ? shortened[0] : `${shortened.slice(0, -1).join(", ")} and ${shortened.at(-1)}`;
+}
 
 function money(research: SecurityResearch, value: number | null) {
   if (value === null || !Number.isFinite(value)) return "unavailable";
@@ -162,8 +189,67 @@ function buildAnalysisSummary(
     postureDetail = `The reference price is ${Math.abs(gap * 100).toFixed(1)}% ${gap >= 0 ? "above" : "below"} the model midpoint of ${money(research, range.midpoint)} under the displayed assumptions. This is a model comparison—not a buy, sell or hold conclusion.`;
   }
 
+  const articles = research.articles ?? [];
+  const identityTokens = [research.identity.symbol, ...research.identity.name.split(/\s+/).filter((token) => token.length > 4)]
+    .map((token) => token.toLowerCase());
+  const companyArticles = articles
+    .map((article, index) => {
+      const title = article.title.toLowerCase();
+      const nameMatches = identityTokens.slice(1).filter((token) => title.includes(token)).length;
+      const symbolMatch = title.includes(research.identity.symbol.toLowerCase()) ? 1 : 0;
+      const relatedMatch = article.relatedTickers.some((ticker) => ticker.toUpperCase() === research.identity.symbol.toUpperCase()) ? 1 : 0;
+      const basketPenalty = article.relatedTickers.length > 3 ? 1 : 0;
+      return { article, index, relevance: nameMatches * 3 + symbolMatch * 2 + relatedMatch - basketPenalty };
+    })
+    .filter(({ relevance }) => relevance > 0)
+    .sort((left, right) => right.relevance - left.relevance || left.index - right.index)
+    .map(({ article }) => article);
+  const companyHeadlines = companyArticles.slice(0, 3).map((article) => article.title);
+  const macroHeadlines = articles
+    .filter((article) => !companyArticles.includes(article))
+    .slice(0, 4)
+    .map((article) => article.title);
+  const allSignals = detectedHeadlineSignals(articles.map((article) => article.title));
+  const companySignals = detectedHeadlineSignals(companyHeadlines);
+  const hasConstructiveSignal = articles.some((article) => /\b(growth|demand|breakthrough|ready|launch|surge|expansion|record|beat)\b/i.test(article.title));
+  const hasPressureSignal = articles.some((article) => /\b(cautious|cost|down|risk|bubble|tariff|shortage|shakeout|miss|decline)\b/i.test(article.title));
+  const evidenceBalance = !narrative.articleCount
+    ? "INSUFFICIENT PUBLIC COVERAGE"
+    : hasConstructiveSignal && hasPressureSignal
+      ? "MIXED: OPPORTUNITY AND EXECUTION PRESSURE"
+      : hasConstructiveSignal
+        ? "CONSTRUCTIVE NARRATIVE, PENDING PRIMARY VERIFICATION"
+        : hasPressureSignal
+          ? "PRESSURE-LED NARRATIVE, PENDING PRIMARY VERIFICATION"
+          : "CONTEXTUAL COVERAGE WITHOUT A CLEAR DIRECTION";
+  const signalLanguage: Record<HeadlineSignal, string> = {
+    innovation: "a fast product and technology cycle",
+    demand: "changing customer demand",
+    cost: "cost and margin pressure",
+    valuation: "a demanding expectations and valuation debate",
+    competition: "competitive repositioning",
+    policy: "policy and regulatory uncertainty",
+  };
+  const macroForces = allSignals.map((signal) => signalLanguage[signal]).slice(0, 4);
+  const macroAnalysis = narrative.articleCount
+    ? `Across ${narrative.articleCount} sampled headlines, the market backdrop is being shaped by ${macroForces.length ? macroForces.join(", ") : narrative.dominantTheme.toLowerCase()}. ${macroHeadlines.length ? `Broader items such as ${joinQuoted(macroHeadlines.slice(0, 2))} show the environment in which the company is being judged.` : "Most of the usable coverage is company-specific rather than sector-wide."} This can change the growth, margin and risk assumptions investors apply, but it is not evidence that those outcomes have occurred.`
+    : "The scan did not return enough current coverage to form a market or sector view.";
+  const companyDrivers = companySignals.map((signal) => signalLanguage[signal]).slice(0, 4);
+  const companyAnalysis = companyHeadlines.length
+    ? `At the company level, the most relevant sampled developments are ${joinQuoted(companyHeadlines)}. Read together, they point to ${companyDrivers.length ? companyDrivers.join(", ") : "a developing company narrative"}. The evidence balance is therefore ${evidenceBalance.toLowerCase()}: the headlines identify possible operating drivers and risks, but the claims still require confirmation in company disclosures and reported results.`
+    : `No headline in the current sample was specific enough to ${research.identity.name} to support a company-level conclusion. Longview therefore keeps the broader market context separate from company evidence.`;
+  const financialChannels = [
+    companySignals.includes("innovation") || companySignals.includes("demand") ? "product adoption and demand → revenue growth" : null,
+    companySignals.includes("cost") ? "pricing and input costs → gross margin and free cash flow" : null,
+    companySignals.includes("competition") ? "competitive intensity → market share and reinvestment needs" : null,
+    companySignals.includes("policy") ? "policy changes → accessible demand, costs or timing" : null,
+    companySignals.includes("valuation") || allSignals.includes("valuation") ? "expectations and valuation → the growth burden embedded in price" : null,
+  ].filter((channel): channel is string => Boolean(channel));
+  const financialTransmission = financialChannels.length
+    ? `The finance chain to test is: ${financialChannels.join("; ")}. A headline matters to the model only when a later filing or result changes one of those business variables. Until then it is a hypothesis, not a valuation input.`
+    : "The sampled headlines do not yet map cleanly to revenue, margins, cash flow, capital needs or risk. They should generate follow-up questions rather than change the valuation model.";
   const researchFinding = narrative.articleCount
-    ? `${narrative.articleCount} current headlines from ${narrative.publisherCount} publishers concentrate most heavily on ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample). The scan maps what the public conversation emphasises; the linked articles still need to be checked against primary evidence.`
+    ? `${macroAnalysis} ${companyAnalysis}`
     : "The public scan returned too little current coverage to support a narrative conclusion. Absence of headlines is not evidence that the company is low-risk or unimportant.";
 
   const valuationFinding = opinion.valuationMethod === "Discounted cash flow" && valuation !== null && range
@@ -181,8 +267,8 @@ function buildAnalysisSummary(
   const quantFinding = `${valuationFinding}${riskFinding}`;
 
   const combinedFinding = range
-    ? `${posture}. Secondary research supplies context and counter-questions; the valuation posture comes only from the deterministic model and its visible assumptions.`
-    : `${posture}. The evidence can describe attention and observed market behaviour, but it cannot establish whether the security is overvalued or undervalued.`;
+    ? `${evidenceBalance}. ${posture}. The public evidence identifies the operating forces that could change revenue, margins, cash flow and risk; the quantitative model shows how demanding the current price is under today’s inputs. The evidence does not override the model, and the model does not verify the headlines.`
+    : `${evidenceBalance}. ${posture}. The coverage can identify possible business drivers and observed market risk, but missing financial inputs prevent an honest overvaluation or undervaluation conclusion.`;
 
   const themeMeanings: Record<string, string> = {
     "Sector demand": "Demand headlines can indicate a changing addressable market, but they matter financially only if they translate into company revenue, pricing or backlog.",
@@ -203,9 +289,9 @@ function buildAnalysisSummary(
     meaning: themeMeanings[theme.theme] ?? themeMeanings["General company news"],
   }));
   const sectorSummary = sectorSignals.length
-    ? `The current coverage is led by ${sectorSignals.map((signal) => `${signal.theme.toLowerCase()} (${signal.share})`).join(", ")}. Across ${narrative.publisherCount} publishers, this is a map of the sector conversation—not a consensus forecast.`
+    ? `${evidenceBalance}. The sampled conversation is led by ${sectorSignals.map((signal) => `${signal.theme.toLowerCase()} (${signal.share})`).join(", ")} across ${narrative.publisherCount} publishers.`
     : "The scan did not return enough current coverage to summarise a sector narrative.";
-  const sectorMeaning = sectorSignals[0]?.meaning ?? "No sector inference should be made from an empty coverage sample.";
+  const sectorMeaning = financialTransmission;
 
   const methods: AnalysisSummary["methods"] = opinion.valuationMethod === "Discounted cash flow" && valuation !== null && range ? [
     {
@@ -340,7 +426,22 @@ function buildAnalysisSummary(
     limitation: "The result inherits its distribution and volatility assumptions and is not a forecast probability.",
   });
 
-  return { posture, postureDetail, researchFinding, quantFinding, combinedFinding, sectorSummary, sectorMeaning, sectorSignals, methods };
+  return {
+    posture,
+    postureDetail,
+    researchFinding,
+    quantFinding,
+    combinedFinding,
+    evidenceBalance,
+    macroAnalysis,
+    companyAnalysis,
+    financialTransmission,
+    companyHeadlines,
+    sectorSummary,
+    sectorMeaning,
+    sectorSignals,
+    methods,
+  };
 }
 
 function buildContextualQuiz(
@@ -727,15 +828,6 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
       <div className="learning-toolbar">
         <SecuritySearch compact />
         <button type="button" className="text-button" onClick={resetSession}><RefreshCcw /> Restart lesson</button>
-        <button
-          type="button"
-          className="text-button"
-          disabled={!opinionUnlocked}
-          onClick={() => window.print()}
-          title={opinionUnlocked ? "Print or save the complete opinion as PDF" : "Complete the education debrief to unlock export"}
-        >
-          {opinionUnlocked ? <FileDown /> : <LockKeyhole />} Export opinion
-        </button>
       </div>
 
       {activeStage === 0 && (
@@ -846,7 +938,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
               detail={hasFinancialModel ? "Compare the selected valuation range with systematic characteristics and historical risk." : "Calculate source diversity, theme entropy and available price-history risk without inventing fundamentals."}
               learning={hasFinancialModel ? "Ranges before false precision" : "Use a smaller method when evidence is smaller"}
             />
-            <RoadmapCard number="05" icon={<BookOpen />} title="Publish and reflect" detail="Separate facts, calculations, interpretation and Longview's model opinion." learning="Understand before exporting" />
+            <RoadmapCard number="05" icon={<BookOpen />} title="Publish and reflect" detail="Separate facts, calculations, interpretation and Longview's model opinion." learning="Understand before reading the full rationale" />
           </div>
           <InstitutionalLens
             institutional="An analyst defines the question, establishes an evidence hierarchy and chooses methods that fit the business before interpreting results."
@@ -1114,8 +1206,8 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
               <LockKeyhole />
               <div>
                 <small>COMPLETE RATIONALE LOCKED</small>
-                <h3>Understand the method before exporting the opinion.</h3>
-                <p>Risks, limitations and the headline model view remain visible. Complete three short learning checks to unlock the source ledger, full rationale and PDF-ready version.</p>
+                <h3>Understand the method before reading the full opinion.</h3>
+                <p>Risks, limitations and the headline model view remain visible. Complete three short learning checks to unlock the source ledger and full rationale.</p>
               </div>
               <button type="button" onClick={() => advance(5)}>Begin education debrief <ArrowRight /></button>
             </div>
@@ -1159,7 +1251,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           </div>
 
           <DebriefFindings analysis={analysis} />
-          <SectorSynthesis analysis={analysis} educational />
+          <EvidenceLearningGuide analysis={analysis} />
 
           <div className="lesson-grid">
             {hasFinancialModel ? <>
@@ -1206,7 +1298,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
                 <small>{score}/3 CHECKS CORRECT · DEBRIEF COMPLETE</small>
                 <h3>{score === activeQuizItems.length ? "The complete Educational Opinion Piece is unlocked." : "The opinion is unlocked. Review the highlighted explanations as you read it."}</h3>
               </div>
-              <button type="button" onClick={() => advance(4)}>Read and export the complete opinion <ArrowRight /></button>
+              <button type="button" onClick={() => advance(4)}>Read the complete opinion <ArrowRight /></button>
             </div>
           )}
 
@@ -1221,11 +1313,6 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
         </StageShell>
       )}
 
-      {opinionUnlocked && (
-        <div className="print-opinion">
-          <FullOpinion research={research} opinion={opinion} analysis={analysis} assumptions={assumptions} formatMoney={formatMoney} print />
-        </div>
-      )}
     </main>
   );
 }
@@ -1472,8 +1559,10 @@ function ModelCatalogue({
       <div>
         {models.map((model) => (
           <article key={model.name}>
-            <small>{model.family}</small>
-            <span className={`model-status status-${model.status.toLowerCase()}`}>{model.status}</span>
+            <div className="model-card-meta">
+              <small>{model.family}</small>
+              <span className={`model-status status-${model.status.toLowerCase()}`}>{model.status}</span>
+            </div>
             <h4>{model.name}</h4>
             <p>{model.purpose}</p>
             <footer>{model.reason}</footer>
@@ -1528,16 +1617,33 @@ function RiskModelPanel({
   );
 }
 
-function SectorSynthesis({ analysis, educational = false }: { analysis: AnalysisSummary; educational?: boolean }) {
+function SectorSynthesis({ analysis }: { analysis: AnalysisSummary }) {
   return (
-    <section className={`sector-synthesis ${educational ? "sector-synthesis-educational" : ""}`}>
+    <section className="sector-synthesis">
       <header>
-        <div><Newspaper /><span>{educational ? "EDUCATIONAL SECTOR BREAKDOWN" : "SECTOR AND MARKET SUMMARY"}</span></div>
+        <div><Newspaper /><span>MARKET & COMPANY EVIDENCE SYNTHESIS</span></div>
         <h3>{analysis.sectorSummary}</h3>
-        <p><strong>What this means:</strong> {analysis.sectorMeaning}</p>
+        <p>This is Longview’s cross-article reading of the sampled coverage—not a list of headlines and not a forecast.</p>
       </header>
+      <div className="evidence-synthesis-grid">
+        <article>
+          <small>01 / MARKET AND SECTOR FORCES</small>
+          <h4>What is changing around the company?</h4>
+          <p>{analysis.macroAnalysis}</p>
+        </article>
+        <article>
+          <small>02 / COMPANY-SPECIFIC READING</small>
+          <h4>What appears most relevant to this stock?</h4>
+          <p>{analysis.companyAnalysis}</p>
+        </article>
+        <article>
+          <small>03 / FINANCIAL TRANSMISSION</small>
+          <h4>How could this enter the model?</h4>
+          <p>{analysis.financialTransmission}</p>
+        </article>
+      </div>
       {analysis.sectorSignals.length > 0 && (
-        <div>
+        <div className="theme-distribution">
           {analysis.sectorSignals.map((signal) => (
             <article key={signal.theme}>
               <small>{signal.share} OF SAMPLED COVERAGE</small>
@@ -1548,9 +1654,34 @@ function SectorSynthesis({ analysis, educational = false }: { analysis: Analysis
           ))}
         </div>
       )}
-      <footer>{educational
-        ? "Finance lens: translate each narrative into a testable effect on revenue, margins, cash flow, capital requirements or risk—then verify it against primary disclosures."
-        : "This summary synthesises headline metadata. It describes the public conversation and its possible financial transmission channels; it does not verify the underlying claims."}</footer>
+      <footer><strong>Evidence boundary:</strong> synthesis can identify a plausible business channel, but only primary disclosures and reported results can confirm that it changed revenue, margins, cash flow, capital needs or risk.</footer>
+    </section>
+  );
+}
+
+function EvidenceLearningGuide({ analysis }: { analysis: AnalysisSummary }) {
+  return (
+    <section className="evidence-learning-guide">
+      <header>
+        <div><BookOpen /><span>HOW TO READ THIS ANALYSIS</span></div>
+        <h2>Move from headline to business driver before touching the valuation.</h2>
+        <p>The educational task is not to memorise Longview’s conclusion. It is to understand which links in the reasoning are observed, inferred, modelled or still unverified.</p>
+      </header>
+      <div className="learning-chain">
+        <article><small>01</small><strong>Observe the claim</strong><p>Start with the exact article or disclosure. A headline is evidence of public attention, not proof of the underlying claim.</p></article>
+        <ArrowRight />
+        <article><small>02</small><strong>Name the business driver</strong><p>Ask whether the claim concerns demand, price, volume, costs, market share, regulation or capital requirements.</p></article>
+        <ArrowRight />
+        <article><small>03</small><strong>Find the financial channel</strong><p>Translate that driver into revenue, margins, cash flow, reinvestment or risk. If no channel exists, it should not alter the model.</p></article>
+        <ArrowRight />
+        <article><small>04</small><strong>Challenge the assumption</strong><p>Check whether a primary disclosure confirms the effect and whether it is large enough to change the valuation assumptions.</p></article>
+      </div>
+      <div className="learning-application">
+        <span>APPLIED TO THIS OPINION</span>
+        <h3>{analysis.evidenceBalance}</h3>
+        <p>{analysis.financialTransmission}</p>
+        <p><strong>Reader’s checkpoint:</strong> Can you identify which part is a headline, which part is Longview’s inference, and which part is a deterministic model output?</p>
+      </div>
     </section>
   );
 }
@@ -1558,9 +1689,10 @@ function SectorSynthesis({ analysis, educational = false }: { analysis: Analysis
 function DebriefFindings({ analysis }: { analysis: AnalysisSummary }) {
   return (
     <section className="debrief-findings">
-      <header><span>WHAT THE ANALYSIS ACTUALLY FOUND</span><h2>Research context, quantitative result, combined interpretation.</h2></header>
+      <header><span>WHAT THE ANALYSIS ACTUALLY FOUND</span><h2>Market context, company implications, quantitative result, combined opinion.</h2></header>
       <div>
-        <article><Newspaper /><span>SECONDARY RESEARCH</span><p>{analysis.researchFinding}</p></article>
+        <article><Newspaper /><span>MARKET CONTEXT</span><p>{analysis.macroAnalysis}</p></article>
+        <article><Target /><span>COMPANY IMPLICATION</span><p>{analysis.companyAnalysis}</p></article>
         <article><Binary /><span>QUANTITATIVE RESULT</span><p>{analysis.quantFinding}</p></article>
         <article><Scale /><span>COMBINED READING</span><h3>{analysis.posture}</h3><p>{analysis.combinedFinding}</p></article>
       </div>
@@ -1610,17 +1742,15 @@ function FullOpinion({
   analysis,
   assumptions,
   formatMoney,
-  print = false,
 }: {
   research: SecurityResearch;
   opinion: EducationalOpinion;
   analysis: AnalysisSummary;
   assumptions: ValuationAssumptions;
   formatMoney: (value: number | null) => string;
-  print?: boolean;
 }) {
   return (
-    <article className={`full-opinion ${print ? "full-opinion-print" : ""}`}>
+    <article className="full-opinion">
       <header>
         <div><span>LONGVIEW RESEARCH</span><h2>{opinion.title}</h2><p>{opinion.dek}</p></div>
         <aside><strong>{research.identity.symbol}</strong><span>{research.identity.exchange}</span><span>{research.identity.currency}</span><small>{research.asOf}</small></aside>

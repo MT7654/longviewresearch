@@ -27,7 +27,7 @@ const journey = [
   { number: "02", icon: <Database />, title: "Separate evidence from narrative", text: "See what is observed, calculated, interpreted or missing—and which evidence challenges the opening idea." },
   { number: "03", icon: <Binary />, title: "Measure what the evidence supports", text: "Run valuation models when fundamentals exist—or study narrative diversity, price behaviour and model boundaries when they do not." },
   { number: "04", icon: <FileText />, title: "Read an educational opinion", text: "Longview publishes a standardised thesis, counter-thesis and model view with assumptions and uncertainty in plain sight." },
-  { number: "05", icon: <BookOpen />, title: "Understand before exporting", text: "A short debrief reconstructs the journey from your first idea to the final opinion and unlocks the complete learning piece." },
+  { number: "05", icon: <BookOpen />, title: "Understand the complete opinion", text: "A short debrief reconstructs the journey from your first idea to the final opinion and unlocks the complete rationale." },
 ];
 
 export default function Home() {
