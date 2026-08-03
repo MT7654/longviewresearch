@@ -69,7 +69,7 @@ import {
   reverseDcfGrowth,
   riskMetrics,
 } from "@/lib/quant";
-import { migrateLearningSession, type StoredLearningSession } from "@/lib/learning-session";
+import { migrateLearningSession, shuffleQuizOptions, type StoredLearningSession } from "@/lib/learning-session";
 
 const fallbackAssumptions: ValuationAssumptions = {
   fcfPerShare: 0,
@@ -93,6 +93,12 @@ function assumptionsFromResearch(research: SecurityResearch): ValuationAssumptio
     eps: research.fundamentals.eps ?? 0,
     targetPe: research.fundamentals.peerPeMedian ?? 25,
   };
+}
+
+function createQuizSeed() {
+  const random = new Uint32Array(1);
+  globalThis.crypto?.getRandomValues?.(random);
+  return random[0] || (Date.now() >>> 0) || 1;
 }
 
 const stages = [
@@ -610,6 +616,7 @@ export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: strin
   const [activeStage, setActiveStage] = useState(0);
   const [completedThrough, setCompletedThrough] = useState(0);
   const [quiz, setQuiz] = useState<Record<number, number>>({});
+  const [quizSeed, setQuizSeed] = useState(1);
   const [opinionUnlocked, setOpinionUnlocked] = useState(false);
   const [tutor, setTutor] = useState<TutorResponse | null>(null);
   const [tutorLoading, setTutorLoading] = useState(false);
@@ -636,6 +643,7 @@ export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: strin
         setActiveStage(0);
         setCompletedThrough(0);
         setQuiz({});
+        setQuizSeed(createQuizSeed());
         setOpinionUnlocked(false);
         setTutor(null);
         setHasStarted(false);
@@ -662,9 +670,10 @@ export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: strin
       activeStage,
       completedThrough,
       quiz,
+      quizSeed,
       opinionUnlocked,
     }));
-  }, [research, sessionReady, hasStarted, profile, activeStage, completedThrough, quiz, opinionUnlocked]);
+  }, [research, sessionReady, hasStarted, profile, activeStage, completedThrough, quiz, quizSeed, opinionUnlocked]);
 
   const valuation = useMemo(() => dcfPerShare(assumptions), [assumptions]);
   const reverseGrowth = useMemo(
@@ -709,8 +718,8 @@ export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: strin
     [research, opinion, valuation, relative, reverseGrowth, risk, garch, tailRisk, marketRisk, narrative],
   );
   const activeQuizItems = useMemo(
-    () => research && analysis ? buildContextualQuiz(research, analysis, reverseGrowth, risk, narrative) : [],
-    [research, analysis, reverseGrowth, risk, narrative],
+    () => research && analysis ? shuffleQuizOptions(buildContextualQuiz(research, analysis, reverseGrowth, risk, narrative), quizSeed) : [],
+    [research, analysis, reverseGrowth, risk, narrative, quizSeed],
   );
   const score = activeQuizItems.reduce((total, item, index) => total + Number(quiz[index] === item.correct), 0);
   const quizComplete = Object.keys(quiz).length === activeQuizItems.length;
@@ -733,6 +742,7 @@ export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: strin
     setActiveStage(resumeSession.activeStage);
     setCompletedThrough(resumeSession.completedThrough);
     setQuiz(resumeSession.quiz);
+    setQuizSeed(resumeSession.quizSeed);
     setOpinionUnlocked(resumeSession.opinionUnlocked);
     setHasStarted(true);
     setResumeSession(null);
@@ -756,6 +766,7 @@ export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: strin
     setActiveStage(0);
     setCompletedThrough(0);
     setQuiz({});
+    setQuizSeed(createQuizSeed());
     setOpinionUnlocked(false);
     setTutor(null);
     setTutorLoading(false);

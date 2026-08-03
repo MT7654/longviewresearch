@@ -6,8 +6,46 @@ export type StoredLearningSession = {
   activeStage: number;
   completedThrough: number;
   quiz: Record<number, number>;
+  quizSeed: number;
   opinionUnlocked: boolean;
 };
+
+export type ShufflableQuizItem = {
+  question: string;
+  options: string[];
+  correct: number;
+  explanation: string;
+};
+
+function nextRandom(state: number) {
+  const next = (state * 1664525 + 1013904223) >>> 0;
+  return { state: next, value: next / 0x100000000 };
+}
+
+export function shuffleQuizOptions<T extends ShufflableQuizItem>(items: T[], seed: number): T[] {
+  let state = seed >>> 0 || 1;
+  const shuffled = items.map((item) => {
+    const options = item.options.map((option, index) => ({ option, wasCorrect: index === item.correct }));
+    for (let index = options.length - 1; index > 0; index--) {
+      const random = nextRandom(state);
+      state = random.state;
+      const swapIndex = Math.floor(random.value * (index + 1));
+      [options[index], options[swapIndex]] = [options[swapIndex], options[index]];
+    }
+    return {
+      ...item,
+      options: options.map(({ option }) => option),
+      correct: options.findIndex(({ wasCorrect }) => wasCorrect),
+    };
+  });
+
+  if (shuffled.length > 1 && shuffled.every((item) => item.correct === 0)) {
+    const first = shuffled[0];
+    const options = [...first.options.slice(1), first.options[0]];
+    shuffled[0] = { ...first, options, correct: options.length - 1 };
+  }
+  return shuffled;
+}
 
 export function migrateLearningSession(value: unknown): StoredLearningSession | null {
   if (!value || typeof value !== "object") return null;
@@ -32,6 +70,7 @@ export function migrateLearningSession(value: unknown): StoredLearningSession | 
     activeStage,
     completedThrough,
     quiz: input.quiz,
+    quizSeed: Number.isFinite(input.quizSeed) ? Number(input.quizSeed) : 1,
     opinionUnlocked: input.opinionUnlocked,
   };
 }

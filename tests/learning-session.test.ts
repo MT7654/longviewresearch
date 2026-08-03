@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { migrateLearningSession } from "../lib/learning-session";
+import { migrateLearningSession, shuffleQuizOptions } from "../lib/learning-session";
 
 const profile = {
   attention: "curious" as const,
@@ -47,5 +47,21 @@ describe("learning-session migration", () => {
   it("rejects malformed stored state", () => {
     expect(migrateLearningSession({ activeStage: 6 })).toBeNull();
     expect(migrateLearningSession(null)).toBeNull();
+  });
+
+  it("shuffles answer positions while preserving the correct answer", () => {
+    const items = [
+      { question: "One", options: ["Correct one", "Wrong A", "Wrong B"], correct: 0, explanation: "One" },
+      { question: "Two", options: ["Correct two", "Wrong C", "Wrong D"], correct: 0, explanation: "Two" },
+      { question: "Three", options: ["Correct three", "Wrong E", "Wrong F"], correct: 0, explanation: "Three" },
+    ];
+    const shuffled = shuffleQuizOptions(items, 7654);
+    expect(shuffled.map((item) => item.correct)).not.toEqual([0, 0, 0]);
+    expect(shuffled.map((item) => item.options[item.correct])).toEqual(["Correct one", "Correct two", "Correct three"]);
+  });
+
+  it("keeps a resumed lesson's answer order stable for the same seed", () => {
+    const items = [{ question: "One", options: ["Correct", "Wrong A", "Wrong B"], correct: 0, explanation: "One" }];
+    expect(shuffleQuizOptions(items, 2026)).toEqual(shuffleQuizOptions(items, 2026));
   });
 });
