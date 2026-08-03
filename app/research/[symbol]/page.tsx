@@ -1,6 +1,13 @@
 import { ResearchWorkspace } from "./workspace";
 
-export default async function ResearchPage({ params }: { params: Promise<{ symbol: string }> }) {
+export default async function ResearchPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ symbol: string }>;
+  searchParams: Promise<{ fresh?: string }>;
+}) {
   const { symbol } = await params;
-  return <ResearchWorkspace symbol={decodeURIComponent(symbol)} />;
+  const { fresh = "" } = await searchParams;
+  return <ResearchWorkspace symbol={decodeURIComponent(symbol)} freshSession={fresh} />;
 }

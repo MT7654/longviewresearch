@@ -256,3 +256,31 @@
 .tutor-response-light>p{color:#53605a}
 @media(max-width:1000px){.model-data-grid,.data-model-map>div,.learning-takeaways .lesson-grid{grid-template-columns:1fr 1fr}.model-data-grid p:nth-child(2n),.data-model-map article:nth-child(2n){border-right:0}}
 @media(max-width:700px){.model-data-grid,.data-model-map>div,.learning-takeaways .lesson-grid{grid-template-columns:1fr}.data-model-map article{border-right:0}.data-model-map article{grid-template-columns:1fr}.data-model-map article>svg{transform:rotate(90deg)}}
+
+/* Seven-stage lesson flow */
+.journey-nav{grid-template-columns:repeat(7,minmax(130px,1fr));overflow-x:auto}
+.resume-lesson-banner{max-width:1420px;margin:0 auto 18px;border:1px solid #899b4f;background:#dce9a7;padding:20px;display:grid;grid-template-columns:32px 1fr auto;gap:16px;align-items:center}
+.resume-lesson-banner>svg{color:#5d7300}
+.resume-lesson-banner>div{display:grid;gap:6px}
+.resume-lesson-banner small{font:600 11px var(--mono);color:#526800}
+.resume-lesson-banner strong{font:400 24px/1.15 var(--display)}
+.resume-lesson-banner p{font-size:14px;color:#5e694f;margin:0}
+.resume-lesson-banner button{border:0;background:var(--ink);color:#fff;padding:14px 17px;display:flex;align-items:center;gap:9px;font:600 11px var(--mono)}
+.resume-lesson-banner button svg{width:15px}
+
+/* Explicit contrast tokens for light inventory cells inside the dark Quant Lab */
+.journey-stage-dark .model-selection-panel>header span,
+.journey-stage-dark .model-selection-panel>footer strong{color:var(--lime)}
+.journey-stage-dark .model-selection-panel>header strong{color:#f4f7f2}
+.journey-stage-dark .model-data-grid p{color:#18201d}
+.journey-stage-dark .model-data-grid small{color:#5f6b64}
+.journey-stage-dark .model-data-grid strong{color:#18201d}
+.journey-stage-dark .model-data-grid .available{background:#eef3d7}
+.journey-stage-dark .model-data-grid .missing{background:#f3e2d3}
+.journey-stage-dark .model-selection-panel>footer p{color:#eef2ed}
+
+@media(max-width:760px){
+  .journey-nav{grid-template-columns:repeat(7,minmax(155px,1fr))}
+  .resume-lesson-banner{grid-template-columns:32px 1fr}
+  .resume-lesson-banner button{grid-column:1/-1;justify-content:center}
+}

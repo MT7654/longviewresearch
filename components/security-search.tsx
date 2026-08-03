@@ -44,7 +44,7 @@ export function SecuritySearch({ compact = false }: { compact?: boolean }) {
   function openLesson(symbol: string) {
     setOpen(false);
     const routeValue = symbol.toUpperCase().startsWith("ENTITY:") ? symbol : symbol.toUpperCase();
-    router.push(`/research/${encodeURIComponent(routeValue)}`);
+    router.push(`/research/${encodeURIComponent(routeValue)}?fresh=${Date.now()}`);
   }
 
   return (

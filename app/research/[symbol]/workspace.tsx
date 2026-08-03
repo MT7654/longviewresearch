@@ -69,6 +69,7 @@ import {
   reverseDcfGrowth,
   riskMetrics,
 } from "@/lib/quant";
+import { migrateLearningSession, type StoredLearningSession } from "@/lib/learning-session";
 
 const fallbackAssumptions: ValuationAssumptions = {
   fcfPerShare: 0,
@@ -81,13 +82,27 @@ const fallbackAssumptions: ValuationAssumptions = {
   targetPe: 25,
 };
 
+function assumptionsFromResearch(research: SecurityResearch): ValuationAssumptions {
+  return {
+    fcfPerShare: research.fundamentals.fcfPerShare ?? 0,
+    forecastYears: 5,
+    growthRate: research.fundamentals.revenueGrowth ?? 0.12,
+    discountRate: 0.1,
+    terminalGrowth: 0.03,
+    netDebtPerShare: research.fundamentals.netDebtPerShare ?? 0,
+    eps: research.fundamentals.eps ?? 0,
+    targetPe: research.fundamentals.peerPeMedian ?? 25,
+  };
+}
+
 const stages = [
   { short: "Starting point", label: "Your starting point" },
   { short: "Roadmap", label: "Automatic learning roadmap" },
   { short: "Evidence", label: "Evidence desk" },
   { short: "Quant", label: "Automatic quant lab" },
-  { short: "Opinion", label: "Educational opinion" },
+  { short: "Opinion preview", label: "Educational opinion preview" },
   { short: "Debrief", label: "Education debrief" },
+  { short: "Opinion unlocked", label: "Complete educational opinion" },
 ];
 
 const attentionOptions: Array<{ value: HypothesisProfile["attention"]; label: string }> = [
@@ -588,7 +603,7 @@ function buildContextualQuiz(
   ];
 }
 
-export function ResearchWorkspace({ symbol }: { symbol: string }) {
+export function ResearchWorkspace({ symbol, freshSession = "" }: { symbol: string; freshSession?: string }) {
   const [research, setResearch] = useState<SecurityResearch | null>(null);
   const [assumptions, setAssumptions] = useState(fallbackAssumptions);
   const [profile, setProfile] = useState<HypothesisProfile>(defaultHypothesis);
@@ -599,10 +614,14 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
   const [tutor, setTutor] = useState<TutorResponse | null>(null);
   const [tutorLoading, setTutorLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [resumeSession, setResumeSession] = useState<StoredLearningSession | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
+    setSessionReady(false);
+    setError("");
     fetch(`/api/securities?symbol=${encodeURIComponent(symbol)}`)
       .then(async (response) => {
         const body = await response.json();
@@ -612,31 +631,19 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
       .then((body) => {
         if (!alive) return;
         setResearch(body);
-        setAssumptions({
-          fcfPerShare: body.fundamentals.fcfPerShare ?? 0,
-          forecastYears: 5,
-          growthRate: body.fundamentals.revenueGrowth ?? 0.12,
-          discountRate: 0.1,
-          terminalGrowth: 0.03,
-          netDebtPerShare: body.fundamentals.netDebtPerShare ?? 0,
-          eps: body.fundamentals.eps ?? 0,
-          targetPe: body.fundamentals.peerPeMedian ?? 25,
-        });
+        setAssumptions(assumptionsFromResearch(body));
+        setProfile(defaultHypothesis);
+        setActiveStage(0);
+        setCompletedThrough(0);
+        setQuiz({});
+        setOpinionUnlocked(false);
+        setTutor(null);
+        setHasStarted(false);
+        setResumeSession(null);
         try {
           const stored = window.localStorage.getItem(`longview-learning:${body.identity.symbol}`);
           if (stored) {
-            const parsed = JSON.parse(stored) as {
-              profile?: HypothesisProfile;
-              activeStage?: number;
-              completedThrough?: number;
-              quiz?: Record<number, number>;
-              opinionUnlocked?: boolean;
-            };
-            if (parsed.profile) setProfile(parsed.profile);
-            setActiveStage(Math.min(5, Math.max(0, parsed.activeStage ?? 0)));
-            setCompletedThrough(Math.min(5, Math.max(0, parsed.completedThrough ?? 0)));
-            if (parsed.quiz) setQuiz(parsed.quiz);
-            setOpinionUnlocked(Boolean(parsed.opinionUnlocked));
+            setResumeSession(migrateLearningSession(JSON.parse(stored)));
           }
         } catch {
           // A damaged local session should never block the learning experience.
@@ -645,18 +652,19 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
       })
       .catch((caught) => alive && setError(caught instanceof Error ? caught.message : "The security could not be loaded."));
     return () => { alive = false; };
-  }, [symbol]);
+  }, [symbol, freshSession]);
 
   useEffect(() => {
-    if (!research || !sessionReady) return;
+    if (!research || !sessionReady || !hasStarted) return;
     window.localStorage.setItem(`longview-learning:${research.identity.symbol}`, JSON.stringify({
+      version: 2,
       profile,
       activeStage,
       completedThrough,
       quiz,
       opinionUnlocked,
     }));
-  }, [research, sessionReady, profile, activeStage, completedThrough, quiz, opinionUnlocked]);
+  }, [research, sessionReady, hasStarted, profile, activeStage, completedThrough, quiz, opinionUnlocked]);
 
   const valuation = useMemo(() => dcfPerShare(assumptions), [assumptions]);
   const reverseGrowth = useMemo(
@@ -714,14 +722,31 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
   }
 
   function beginJourney() {
+    setHasStarted(true);
+    setResumeSession(null);
     advance(1);
+  }
+
+  function resumeJourney() {
+    if (!resumeSession) return;
+    setProfile(resumeSession.profile);
+    setActiveStage(resumeSession.activeStage);
+    setCompletedThrough(resumeSession.completedThrough);
+    setQuiz(resumeSession.quiz);
+    setOpinionUnlocked(resumeSession.opinionUnlocked);
+    setHasStarted(true);
+    setResumeSession(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function answerQuiz(index: number, optionIndex: number) {
     const nextQuiz = { ...quiz, [index]: optionIndex };
     setQuiz(nextQuiz);
     const completed = activeQuizItems.every((_, itemIndex) => nextQuiz[itemIndex] !== undefined);
-    if (completed) setOpinionUnlocked(true);
+    if (completed) {
+      setOpinionUnlocked(true);
+      setCompletedThrough((current) => Math.max(current, 6));
+    }
   }
 
   function resetSession() {
@@ -733,6 +758,11 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
     setQuiz({});
     setOpinionUnlocked(false);
     setTutor(null);
+    setTutorLoading(false);
+    setAssumptions(assumptionsFromResearch(research));
+    setHasStarted(false);
+    setResumeSession(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function askTutor() {
@@ -846,7 +876,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
 
       <nav className="journey-nav" aria-label="Learning stages">
         {stages.map((stage, index) => {
-          const available = index <= completedThrough;
+          const available = index <= completedThrough && (index !== 6 || opinionUnlocked);
           return (
             <button
               type="button"
@@ -874,6 +904,17 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           title="Begin with what you think you know."
           intro="Institutional research begins with a claim that can be tested. Your answers shape the teaching emphasis only; every reader receives the same underlying financial analysis."
         >
+          {resumeSession && (
+            <div className="resume-lesson-banner">
+              <RefreshCcw />
+              <div>
+                <small>PREVIOUS LESSON FOUND</small>
+                <strong>Resume at {stages[resumeSession.activeStage]?.short ?? "your last stage"} or begin again below.</strong>
+                <p>Longview never resumes a prior ticker lesson without your choice.</p>
+              </div>
+              <button type="button" onClick={resumeJourney}>Resume previous lesson <ArrowRight /></button>
+            </div>
+          )}
           <div className="intake-grid">
             <div className="intake-main">
               <fieldset>
@@ -1203,49 +1244,45 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
 
       {activeStage === 4 && (
         <StageShell
-          eyebrow="05 / INDEPENDENT EDUCATIONAL OPINION"
+          eyebrow="05 / OPINION PREVIEW"
           title={opinion.title}
           intro={opinion.dek}
         >
-          {!opinionUnlocked ? (
-            <>
-              <OpinionHeader research={research} opinion={opinion} analysis={analysis} formatMoney={formatMoney} />
-              <SectorSynthesis analysis={analysis} />
-              <div className="opinion-columns">
-                <article className="opinion-thesis">
-                  <span>THE THESIS</span>
-                  <h3>{opinion.thesis}</h3>
-                </article>
-                <article className="opinion-counter">
-                  <span>THE COUNTER-THESIS</span>
-                  <h3>{opinion.counterThesis}</h3>
-                </article>
-              </div>
-              <article className="model-opinion">
-                <span>LONGVIEW MODEL OPINION</span>
-                <h3>{opinion.modelOpinion}</h3>
-                <p>This is standardised educational commentary. It is not a recommendation, suitability assessment or prediction that a market price will reach a displayed model value.</p>
-              </article>
-              <div className="opinion-lock">
-                <LockKeyhole />
-                <div>
-                  <small>COMPLETE RATIONALE LOCKED</small>
-                  <h3>Understand the method before reading the full opinion.</h3>
-                  <p>Risks, limitations and the headline model view remain visible. Complete three short learning checks to unlock the source ledger and full rationale.</p>
-                </div>
-                <button type="button" onClick={() => advance(5)}>Begin education debrief <ArrowRight /></button>
-              </div>
-            </>
-          ) : (
-            <FullOpinion research={research} opinion={opinion} analysis={analysis} assumptions={assumptions} formatMoney={formatMoney} />
-          )}
+          <OpinionHeader research={research} opinion={opinion} analysis={analysis} formatMoney={formatMoney} />
+          <SectorSynthesis analysis={analysis} />
+          <div className="opinion-columns">
+            <article className="opinion-thesis">
+              <span>THE THESIS</span>
+              <h3>{opinion.thesis}</h3>
+            </article>
+            <article className="opinion-counter">
+              <span>THE COUNTER-THESIS</span>
+              <h3>{opinion.counterThesis}</h3>
+            </article>
+          </div>
+          <article className="model-opinion">
+            <span>LONGVIEW MODEL OPINION</span>
+            <h3>{opinion.modelOpinion}</h3>
+            <p>This is standardised educational commentary. It is not a recommendation, suitability assessment or prediction that a market price will reach a displayed model value.</p>
+          </article>
+          <div className="opinion-lock">
+            {opinionUnlocked ? <CheckCircle2 /> : <LockKeyhole />}
+            <div>
+              <small>{opinionUnlocked ? "COMPLETE OPINION UNLOCKED" : "COMPLETE RATIONALE LOCKED"}</small>
+              <h3>{opinionUnlocked ? "Your full opinion is available as the final stage." : "Understand the method before reading the full opinion."}</h3>
+              <p>{opinionUnlocked ? "You can revisit the debrief or continue directly to the complete source ledger and rationale." : "Risks, limitations and the headline model view remain visible. Complete three short learning checks to unlock the source ledger and full rationale."}</p>
+            </div>
+            <button type="button" onClick={() => advance(opinionUnlocked ? 6 : 5)}>
+              {opinionUnlocked ? "Read complete opinion" : "Begin education debrief"} <ArrowRight />
+            </button>
+          </div>
 
           <InstitutionalLens
             institutional="Editorial discipline means clearly separating facts, calculations, source interpretation and the publication's own model opinion."
             plain="The opinion can be challenged because its assumptions, counter-case and unresolved questions remain visible."
             limitation="This opinion uses the exact data timestamp and coverage shown above. It should not be treated as current after that date."
           />
-          {!opinionUnlocked && <StageContinue label="Continue to the education debrief" onClick={() => advance(5)} />}
+          <StageContinue label={opinionUnlocked ? "Continue to the complete opinion" : "Continue to the education debrief"} onClick={() => advance(opinionUnlocked ? 6 : 5)} />
         </StageShell>
       )}
 
@@ -1333,7 +1370,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
                 <small>{score}/3 CHECKS CORRECT · DEBRIEF COMPLETE</small>
                 <h3>{score === activeQuizItems.length ? "The complete Educational Opinion Piece is unlocked." : "The opinion is unlocked. Review the highlighted explanations as you read it."}</h3>
               </div>
-              <button type="button" onClick={() => advance(4)}>Read the complete opinion <ArrowRight /></button>
+              <button type="button" onClick={() => advance(6)}>Read the complete opinion <ArrowRight /></button>
             </div>
           )}
 
@@ -1345,6 +1382,21 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
               <p>The service does not consider objectives, finances, holdings, loss capacity or needs. It does not recommend a transaction or course of action.</p>
             </div>
           </div>
+        </StageShell>
+      )}
+
+      {activeStage === 6 && opinionUnlocked && (
+        <StageShell
+          eyebrow="07 / OPINION UNLOCKED"
+          title={opinion.title}
+          intro="The complete educational opinion brings together the public-coverage synthesis, quantitative method ledger, assumptions, limitations and source record."
+        >
+          <FullOpinion research={research} opinion={opinion} analysis={analysis} assumptions={assumptions} formatMoney={formatMoney} />
+          <InstitutionalLens
+            institutional="The final opinion remains auditable because every conclusion is separated into evidence, calculation, interpretation and limitation."
+            plain="You can now trace the summary back to the articles, model inputs and unanswered questions that produced it."
+            limitation="Unlocked does not mean recommended. The opinion remains generic educational commentary and does not consider your circumstances."
+          />
         </StageShell>
       )}
 
