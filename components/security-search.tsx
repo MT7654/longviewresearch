@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Search, LoaderCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Result = {
@@ -21,6 +21,7 @@ export function SecuritySearch({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const requestId = useRef(0);
+  const inputId = useId();
 
   useEffect(() => {
     if (!query.trim()) {
@@ -42,16 +43,21 @@ export function SecuritySearch({ compact = false }: { compact?: boolean }) {
 
   function openLesson(symbol: string) {
     setOpen(false);
-    router.push(`/research/${encodeURIComponent(symbol.toUpperCase())}`);
+    const routeValue = symbol.toUpperCase().startsWith("ENTITY:") ? symbol : symbol.toUpperCase();
+    router.push(`/research/${encodeURIComponent(routeValue)}`);
   }
 
   return (
     <div className={`security-search ${compact ? "compact" : ""}`}>
-      <form onSubmit={(event) => { event.preventDefault(); if (query.trim()) openLesson(query.trim()); }}>
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        if (!query.trim()) return;
+        openLesson(results[0]?.symbol ?? `ENTITY:${query.trim()}`);
+      }}>
         <Search aria-hidden="true" />
-        <label className="sr-only" htmlFor={compact ? "compact-security-search" : "security-search"}>Search for a listed company</label>
+        <label className="sr-only" htmlFor={inputId}>Search for a listed company</label>
         <input
-          id={compact ? "compact-security-search" : "security-search"}
+          id={inputId}
           value={query}
           onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
@@ -64,18 +70,11 @@ export function SecuritySearch({ compact = false }: { compact?: boolean }) {
         <div className="search-results">
           {results.map((result) => (
             <button key={`${result.symbol}-${result.exchange}`} onClick={() => openLesson(result.symbol)}>
-              <span><strong>{result.symbol}</strong><small>{result.exchange}</small></span>
-              <span><b>{result.name}</b><small>{result.currency} · {result.type}</small></span>
+              <span><strong>{result.source === "public-research" ? "RESEARCH" : result.symbol}</strong><small>{result.exchange}</small></span>
+              <span><b>{result.name}</b><small>{result.source === "public-research" ? "No listing required" : result.currency} · {result.type}</small></span>
               <ArrowUpRight />
             </button>
           ))}
-          {!loading && (
-            <button className="direct-symbol" onClick={() => openLesson(query.trim())}>
-              <span><strong>{query.toUpperCase()}</strong><small>Exact symbol</small></span>
-              <span><b>Begin with available public data</b><small>Coverage is checked before any model runs</small></span>
-              <ArrowUpRight />
-            </button>
-          )}
         </div>
       )}
     </div>

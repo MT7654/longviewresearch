@@ -2,7 +2,7 @@
 
 > **Learn how a stock opinion is built.**
 
-Longview Research is a Life Agent for retail-investor education. A learner names a listed company and records what first caught their attention. Longview then guides them through the same broad sequence an evidence-led analyst might use: frame a hypothesis, examine evidence, run quantitative models, compare competing interpretations, and explain the resulting opinion.
+Longview Research is a Life Agent for retail-investor education. A learner names a listed company and records what first caught their attention. Longview then guides them through the same broad sequence an evidence-led analyst might use: frame a hypothesis, scan public coverage, test the evidence available, compare competing interpretations, and explain the resulting opinion.
 
 The product publishes an **Independent Educational Opinion Piece**. It does not tell a person whether to buy, sell, hold, size, or time a position. The learner's hypothesis changes the teaching prompts, never the financial model or published conclusion.
 
@@ -37,7 +37,7 @@ Longview turns the finished answer into an inspectable learning journey.
 flowchart LR
     A["Stock + learner hypothesis"] --> B["Automatic learning roadmap"]
     B --> C["Layered evidence review"]
-    C --> D["Automatic quant lab"]
+    C --> D["Evidence-aware quant lab"]
     D --> E["Educational opinion"]
     E --> F["Debrief + export"]
 ```
@@ -61,9 +61,11 @@ Evidence is separated into visible editorial layers:
 
 Each item carries a direction, source, date, and reliability cue. The interface explicitly asks what would confirm or weaken the learner's opening hypothesis.
 
+For arbitrary companies, Longview automatically scans current public Yahoo Finance coverage, deduplicates and relevance-filters the results, links to the original publishers, groups headlines into research themes, and measures source diversity and narrative concentration. Headline classification is a navigation aid—not proof that an article's underlying claims are true.
+
 ### 4. Automatic quant lab
 
-The app runs available models immediately:
+The app runs only the methods supported by the available evidence:
 
 - reverse discounted cash flow;
 - scenario DCF;
@@ -72,11 +74,11 @@ The app runs available models immediately:
 - value, quality, momentum, and low-volatility proxies; and
 - historical return, volatility, and drawdown measures.
 
-Advanced controls are optional. Missing inputs withhold affected outputs rather than asking an LLM to invent them. A bank sample demonstrates that a generic free-cash-flow DCF should not be forced onto the wrong business model.
+For a mature listed company with sufficient public fundamentals, these models run automatically. For a new listing, private-company query, or incomplete dataset, the lab instead measures the public narrative and the price history that actually exists, then explains why valuation is withheld. Advanced controls appear only when they have a real function. A bank sample demonstrates that a generic free-cash-flow DCF should not be forced onto the wrong business model.
 
 ### 5. Independent Educational Opinion Piece
 
-Longview synthesises a dated model range, thesis, counter-thesis, coverage grade, risks, assumptions, evidence ledger, and standardised model opinion. The range is a mechanical sensitivity output, not a recommended target price.
+Longview synthesises a thesis, counter-thesis, coverage grade, risks, evidence ledger, and standardised model opinion. A dated mechanical model range appears only when the inputs support one; otherwise the piece explicitly states the model boundary and publishes a narrative-and-market-behaviour lesson instead. No output is a recommended target price.
 
 ### 6. Educational debrief
 
@@ -100,7 +102,7 @@ The language model never owns the canonical arithmetic, data coverage decision, 
 
 ## Cost and reliability design
 
-The credential-free sample path is the primary demo. Hugging Face, Reddit, paid scrapers, and paid market-data APIs are not used.
+The credential-free sample path is the most reproducible demo. Arbitrary-stock research uses public Yahoo Finance search, chart, and fundamental time-series endpoints with visible attribution and graceful failure. Hugging Face, Reddit, paid scrapers, and paid market-data APIs are not used.
 
 Gemini is optional and only called when the learner requests a model challenge. The server:
 

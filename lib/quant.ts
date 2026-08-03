@@ -72,32 +72,36 @@ function returns(series: PricePoint[]) {
   return series.slice(1).map((point, index) => point.close / series[index].close - 1).filter(Number.isFinite);
 }
 
-export function riskMetrics(series: PricePoint[]) {
+export function riskMetrics(series: PricePoint[], periodsPerYear = 12) {
   if (series.length < 3) return null;
-  const monthly = returns(series);
-  const mean = monthly.reduce((sum, value) => sum + value, 0) / monthly.length;
-  const variance = monthly.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, monthly.length - 1);
+  const periodic = returns(series);
+  const mean = periodic.reduce((sum, value) => sum + value, 0) / periodic.length;
+  const variance = periodic.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, periodic.length - 1);
   let peak = series[0].close;
   let drawdown = 0;
   for (const point of series) {
     peak = Math.max(peak, point.close);
     drawdown = Math.min(drawdown, point.close / peak - 1);
   }
-  const annualReturn = (1 + mean) ** 12 - 1;
-  const volatility = Math.sqrt(variance * 12);
-  const momentum = series.length >= 13 ? series.at(-2)!.close / series.at(-13)!.close - 1 : series.at(-1)!.close / series[0].close - 1;
+  const annualReturn = (1 + mean) ** periodsPerYear - 1;
+  const volatility = Math.sqrt(variance * periodsPerYear);
+  const lookback = Math.min(periodsPerYear, series.length - 1);
+  const skip = periodsPerYear > 50 && series.length > 22 ? 21 : 1;
+  const end = series[Math.max(0, series.length - 1 - skip)];
+  const start = series[Math.max(0, series.length - 1 - lookback)];
+  const momentum = start?.close && end?.close ? end.close / start.close - 1 : 0;
   return { annualReturn, volatility, sharpe: volatility ? annualReturn / volatility : 0, maxDrawdown: drawdown, momentum };
 }
 
-export function factorLens(price: number | null, assumptions: ValuationAssumptions, roic = 0, operatingMargin = 0, history: PricePoint[]) {
-  const risk = riskMetrics(history);
+export function factorLens(price: number | null, assumptions: ValuationAssumptions, roic = 0, operatingMargin = 0, history: PricePoint[], periodsPerYear = 12) {
+  const risk = riskMetrics(history, periodsPerYear);
   const earningsYield = price && assumptions.eps > 0 ? assumptions.eps / price : 0;
   const fcfYield = price && assumptions.fcfPerShare > 0 ? assumptions.fcfPerShare / price : 0;
   const leveragePenalty = Math.max(0, assumptions.netDebtPerShare) / Math.max(assumptions.fcfPerShare, 0.01);
   return [
     { label: "Value", score: clamp((earningsYield + fcfYield) * 550 - 25), detail: "Earnings and free-cash-flow yield" },
     { label: "Quality", score: clamp(roic * 120 + operatingMargin * 70 - leveragePenalty * 4), detail: "ROIC, margin and balance-sheet proxy" },
-    { label: "Momentum", score: clamp(((risk?.momentum ?? 0) + 0.25) * 120), detail: "12–1 month price momentum proxy" },
+    { label: "Momentum", score: clamp(((risk?.momentum ?? 0) + 0.25) * 120), detail: periodsPerYear > 50 ? "Available-history price momentum proxy" : "12–1 month price momentum proxy" },
     { label: "Low volatility", score: clamp(85 - (risk?.volatility ?? 0.45) * 100), detail: "Inverse realised volatility" },
   ];
 }

@@ -1,5 +1,14 @@
 export type PricePoint = { date: string; close: number };
 
+export type PublicArticle = {
+  id: string;
+  title: string;
+  publisher: string;
+  url: string;
+  publishedAt: string;
+  relatedTickers: string[];
+};
+
 export type SecurityIdentity = {
   symbol: string;
   name: string;
@@ -29,7 +38,7 @@ export type SourceRecord = {
   publisher: string;
   url: string;
   asOf: string;
-  kind: "market" | "filing" | "methodology" | "demo";
+  kind: "market" | "filing" | "methodology" | "demo" | "news" | "fundamentals";
   tier?: "primary" | "secondary" | "methodology" | "demonstration";
   claim?: string;
   reliability?: "high" | "medium" | "illustrative";
@@ -43,7 +52,9 @@ export type SecurityResearch = {
   asOf: string;
   mode: "live" | "sample" | "unverified";
   priceHistory: PricePoint[];
+  historyInterval?: "daily" | "monthly";
   fundamentals: Fundamentals;
+  articles?: PublicArticle[];
   sources: SourceRecord[];
   coverage: {
     identity: boolean;
@@ -51,6 +62,7 @@ export type SecurityResearch = {
     history: boolean;
     fundamentals: boolean;
     peers: boolean;
+    articles?: boolean;
   };
   note?: string;
 };
@@ -89,9 +101,26 @@ export type EvidenceRecord = {
   detail: string;
   sourceLabel: string;
   asOf: string;
+  url?: string;
+  theme?: string;
 };
 
-export type CoverageLevel = "full" | "partial" | "price-only";
+export type CoverageLevel = "full" | "partial" | "research-only";
+
+export type NarrativeSignals = {
+  articleCount: number;
+  publisherCount: number;
+  sourceDiversity: number;
+  themeEntropy: number;
+  recentCount: number;
+  dominantTheme: string;
+  dominantShare: number;
+  hypothesisMatches: number;
+  supports: number;
+  challenges: number;
+  context: number;
+  themes: Array<{ theme: string; count: number }>;
+};
 
 export type EducationalOpinion = {
   title: string;
@@ -106,4 +135,5 @@ export type EducationalOpinion = {
   variablesToMonitor: string[];
   unresolvedQuestions: string[];
   evidence: EvidenceRecord[];
+  narrative: NarrativeSignals;
 };

@@ -25,7 +25,7 @@ const samples = [
 const journey = [
   { number: "01", icon: <Lightbulb />, title: "Start with your hypothesis", text: "Tell Longview what caught your attention or what you currently believe. “I do not know” is a valid starting point." },
   { number: "02", icon: <Database />, title: "Separate evidence from narrative", text: "See what is observed, calculated, interpreted or missing—and which evidence challenges the opening idea." },
-  { number: "03", icon: <Binary />, title: "Run the automatic Quant Lab", text: "Explore reverse DCF, scenario valuation, seeded uncertainty, factor proxies and historical risk without configuring a model." },
+  { number: "03", icon: <Binary />, title: "Measure what the evidence supports", text: "Run valuation models when fundamentals exist—or study narrative diversity, price behaviour and model boundaries when they do not." },
   { number: "04", icon: <FileText />, title: "Read an educational opinion", text: "Longview publishes a standardised thesis, counter-thesis and model view with assumptions and uncertainty in plain sight." },
   { number: "05", icon: <BookOpen />, title: "Understand before exporting", text: "A short debrief reconstructs the journey from your first idea to the final opinion and unlocks the complete learning piece." },
 ];
@@ -105,13 +105,13 @@ export default function Home() {
         <header className="section-heading">
           <span>03 / THE QUANT LAB</span>
           <h2>Institutional methods, translated.</h2>
-          <p>The arithmetic runs locally and reproducibly. Gemini can help teach, but it never owns canonical numbers or the model range.</p>
+          <p>Longview adapts to the evidence available. Arithmetic runs locally and reproducibly; Gemini can help teach, but never invents a canonical number or missing model input.</p>
         </header>
         <div className="quant-method-grid">
-          <article><span>EXPECTATIONS</span><Braces /><h3>Reverse DCF</h3><p>Solve backwards from price to reveal the cash-flow growth implied by stated assumptions.</p></article>
+          <article><span>EXPECTATIONS</span><Braces /><h3>Reverse DCF</h3><p>When public fundamentals support it, solve backwards from price to reveal the cash-flow growth implied by stated assumptions.</p></article>
           <article><span>VALUATION</span><FlaskConical /><h3>Scenario grid</h3><p>Observe how growth and discount rates change a mechanical valuation range.</p></article>
           <article><span>UNCERTAINTY</span><Binary /><h3>Monte Carlo</h3><p>Inspect a seeded distribution across uncertain inputs instead of one confident number.</p></article>
-          <article><span>SYSTEMATIC</span><Scale /><h3>Factor lens</h3><p>Learn how value, quality, momentum and volatility describe historical characteristics.</p></article>
+          <article><span>SYSTEMATIC</span><Scale /><h3>Evidence lens</h3><p>Study supported factors, price behaviour and public-narrative concentration without filling missing inputs with guesses.</p></article>
         </div>
         <Link className="method-link" href="/methodology">Inspect formulas and model boundaries <ArrowRight /></Link>
       </section>

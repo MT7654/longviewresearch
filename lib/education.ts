@@ -3,6 +3,8 @@ import type {
   EducationalOpinion,
   EvidenceRecord,
   HypothesisProfile,
+  NarrativeSignals,
+  PublicArticle,
   SecurityResearch,
   ValuationAssumptions,
 } from "./domain";
@@ -45,6 +47,19 @@ const sampleContext: Record<string, {
   },
 };
 
+const themeRules: Array<{ theme: string; pattern: RegExp }> = [
+  { theme: "Sector demand", pattern: /\b(demand|market|industry|sector|customer|launch|satellite|ai|cloud|energy)\b/i },
+  { theme: "Capital & valuation", pattern: /\b(ipo|valuation|funding|capital|earnings|revenue|profit|cash|shares?|stock|price)\b/i },
+  { theme: "Execution", pattern: /\b(product|delivery|contract|manufactur|production|service|growth|forecast|results)\b/i },
+  { theme: "Policy & regulation", pattern: /\b(regulat|government|policy|antitrust|approval|ban|tariff|export|court)\b/i },
+  { theme: "Competition", pattern: /\b(rival|compet|versus|challenge|threat|share loss)\b/i },
+  { theme: "Attention & narrative", pattern: /\b(hype|viral|meme|buzz|popular|trend|famous|musk|reddit)\b/i },
+];
+
+const supportPattern = /\b(beats?|surge|wins?|growth|record|expands?|strong|raises?|success|profit|approval)\b/i;
+const challengePattern = /\b(miss|falls?|drops?|delay|risk|loss|lawsuit|probe|cuts?|weak|concern|warning|failure)\b/i;
+const stopWords = new Set(["about", "after", "again", "against", "could", "from", "have", "into", "more", "that", "their", "there", "these", "this", "with", "would"]);
+
 export const defaultHypothesis: HypothesisProfile = {
   attention: "curious",
   understanding: "new",
@@ -53,8 +68,8 @@ export const defaultHypothesis: HypothesisProfile = {
 
 export function coverageLevel(research: SecurityResearch): CoverageLevel {
   if (research.coverage.fundamentals && research.coverage.history) return "full";
-  if (research.coverage.price || research.coverage.history) return "partial";
-  return "price-only";
+  if (research.coverage.price || research.coverage.history || research.coverage.articles) return "partial";
+  return "research-only";
 }
 
 export function containsAdviceRequest(value: string) {
@@ -76,11 +91,103 @@ export function learningPrompt(profile: HypothesisProfile, company: string) {
   return { startingPoint, emphasis };
 }
 
+export function articleTheme(title: string) {
+  return themeRules.find((rule) => rule.pattern.test(title))?.theme ?? "General company news";
+}
+
+export function articleDirection(title: string): "supports" | "challenges" | "context" {
+  const supports = supportPattern.test(title);
+  const challenges = challengePattern.test(title);
+  // Risk language takes precedence when a verb such as "raises" is itself
+  // superficially positive ("raises execution risk").
+  if (challenges) return "challenges";
+  if (supports) return "supports";
+  return "context";
+}
+
+export function analyzeNarrative(articles: PublicArticle[] = [], hypothesis = ""): NarrativeSignals {
+  const counts = new Map<string, number>();
+  let supports = 0;
+  let challenges = 0;
+  let context = 0;
+  for (const article of articles) {
+    const theme = articleTheme(article.title);
+    counts.set(theme, (counts.get(theme) ?? 0) + 1);
+    const direction = articleDirection(article.title);
+    if (direction === "supports") supports++;
+    else if (direction === "challenges") challenges++;
+    else context++;
+  }
+  const themes = [...counts.entries()].map(([theme, count]) => ({ theme, count })).sort((a, b) => b.count - a.count || a.theme.localeCompare(b.theme));
+  const total = articles.length;
+  const probabilities = themes.map((item) => item.count / Math.max(1, total));
+  const rawEntropy = probabilities.reduce((sum, probability) => sum - probability * Math.log2(probability), 0);
+  const maxEntropy = themes.length > 1 ? Math.log2(themes.length) : 1;
+  const hypothesisTerms = hypothesis.toLowerCase().match(/[a-z0-9]{4,}/g)?.filter((term) => !stopWords.has(term)) ?? [];
+  const hypothesisMatches = hypothesisTerms.length
+    ? articles.filter((article) => hypothesisTerms.some((term) => article.title.toLowerCase().includes(term))).length
+    : 0;
+  const now = Date.now();
+  const recentCount = articles.filter((article) => {
+    const timestamp = Date.parse(article.publishedAt);
+    return Number.isFinite(timestamp) && now - timestamp <= 30 * 86400000;
+  }).length;
+  const publisherCount = new Set(articles.map((article) => article.publisher.toLowerCase())).size;
+  return {
+    articleCount: total,
+    publisherCount,
+    sourceDiversity: total ? publisherCount / total : 0,
+    themeEntropy: themes.length ? rawEntropy / maxEntropy : 0,
+    recentCount,
+    dominantTheme: themes[0]?.theme ?? "No current theme",
+    dominantShare: total ? (themes[0]?.count ?? 0) / total : 0,
+    hypothesisMatches,
+    supports,
+    challenges,
+    context,
+    themes,
+  };
+}
+
+function publicArticleEvidence(articles: PublicArticle[]): EvidenceRecord[] {
+  return articles.slice(0, 8).map((article) => {
+    const theme = articleTheme(article.title);
+    const direction = articleDirection(article.title);
+    return {
+      id: `public-${article.id}`,
+      layer: "Source interpretation",
+      tier: "Secondary",
+      direction,
+      title: article.title,
+      detail: `A current ${theme.toLowerCase()} headline from ${article.publisher}. Longview uses the headline to map the public narrative, not as proof that the underlying business claim is true. Open the source and inspect its evidence.`,
+      sourceLabel: article.publisher,
+      asOf: article.publishedAt,
+      url: article.url,
+      theme,
+    };
+  });
+}
+
 function genericEvidence(research: SecurityResearch, assumptions: ValuationAssumptions): EvidenceRecord[] {
-  const risk = riskMetrics(research.priceHistory);
+  const periods = research.historyInterval === "daily" ? 252 : 12;
+  const risk = riskMetrics(research.priceHistory, periods);
   const implied = research.price ? reverseDcfGrowth(research.price, assumptions) : null;
   const context = sampleContext[research.identity.symbol];
   const items: EvidenceRecord[] = [];
+
+  if (research.coverage.identity && research.price !== null) {
+    items.push({
+      id: "listing-snapshot",
+      layer: "Observed fact",
+      tier: "Secondary",
+      direction: "context",
+      title: `${research.identity.symbol} resolves to ${research.identity.name}`,
+      detail: `The public market-data record identifies an ${research.identity.type.toLowerCase()} on ${research.identity.exchange} with a reference price of ${research.identity.currency} ${research.price.toFixed(2)}. Identity and price do not establish business quality or value.`,
+      sourceLabel: research.sources.find((source) => source.kind === "market")?.publisher ?? "Public market-data service",
+      asOf: research.asOf,
+      url: research.sources.find((source) => source.kind === "market")?.url,
+    });
+  }
 
   if (context) {
     items.push(
@@ -117,6 +224,8 @@ function genericEvidence(research: SecurityResearch, assumptions: ValuationAssum
     );
   }
 
+  items.push(...publicArticleEvidence(research.articles ?? []));
+
   if (implied !== null) {
     items.push({
       id: "reverse-dcf",
@@ -137,9 +246,10 @@ function genericEvidence(research: SecurityResearch, assumptions: ValuationAssum
       tier: research.mode === "sample" ? "Demonstration" : "Secondary",
       direction: "context",
       title: "Historical price behaviour",
-      detail: `The available monthly series produced ${(risk.volatility * 100).toFixed(1)}% annualised volatility and a ${(risk.maxDrawdown * 100).toFixed(1)}% maximum observed drawdown. This describes the sample; it does not forecast future risk.`,
+      detail: `The available ${research.historyInterval ?? "monthly"} series produced ${(risk.volatility * 100).toFixed(1)}% annualised volatility and a ${(risk.maxDrawdown * 100).toFixed(1)}% maximum observed drawdown. A short listing history makes these estimates unstable.`,
       sourceLabel: research.sources.find((source) => source.kind === "market")?.label ?? "Longview sample price series",
       asOf: research.asOf,
+      url: research.sources.find((source) => source.kind === "market")?.url,
     });
   }
 
@@ -149,8 +259,21 @@ function genericEvidence(research: SecurityResearch, assumptions: ValuationAssum
       layer: "Observed fact",
       tier: "Methodology",
       direction: "limitation",
-      title: "Canonical fundamentals are unavailable",
-      detail: "Longview will not invent missing company fundamentals. Business valuation methods remain disabled or illustrative until dated, attributable inputs are available.",
+      title: "A financial valuation is not supportable yet",
+      detail: "Longview found no model-ready reported free cash flow and earnings series for this listing. It will quantify public narrative and price behaviour, but it will not invent a DCF or recommended target.",
+      sourceLabel: "Longview coverage policy",
+      asOf: research.asOf,
+    });
+  }
+
+  if (!items.length) {
+    items.push({
+      id: "unresolved-coverage",
+      layer: "Observed fact",
+      tier: "Methodology",
+      direction: "limitation",
+      title: "The requested company could not be resolved",
+      detail: "No exact listing, price series or current public article sample was returned. Longview cannot make a company claim from an empty evidence set.",
       sourceLabel: "Longview coverage policy",
       asOf: research.asOf,
     });
@@ -169,39 +292,64 @@ export function buildEducationalOpinion(
   const simulation = value === null ? null : monteCarloValuation(assumptions);
   const impliedGrowth = research.price ? reverseDcfGrowth(research.price, assumptions) : null;
   const context = sampleContext[research.identity.symbol];
-  const modelRange = simulation ? {
-    low: simulation.p10,
-    midpoint: simulation.median,
-    high: simulation.p90,
-  } : null;
+  const narrative = analyzeNarrative(research.articles ?? [], profile.hypothesis);
+  const modelRange = simulation ? { low: simulation.p10, midpoint: simulation.median, high: simulation.p90 } : null;
 
-  let modelOpinion = "Available public information supports a descriptive learning exercise, but not a model-derived valuation opinion.";
+  let modelOpinion = "The available evidence is too thin to support either a financial valuation or a useful narrative assessment.";
   let status: EducationalOpinion["hypothesisStatus"] = profile.hypothesis.trim() ? "Presently unanswerable" : "Exploratory";
+  let thesis = context?.support ?? "No supportable company thesis can be formed from the available evidence.";
+  let counterThesis = context?.challenge ?? "An empty or single-source evidence set should not be converted into confidence.";
+  let variablesToMonitor = context?.monitor ?? ["Primary company disclosures", "Reported cash-flow evidence", "Sector demand", "Data coverage"];
+  let unresolvedQuestions = context?.questions ?? ["Can the exact listing be verified?", "Which valuation method fits this business?", "What evidence could falsify the opening thesis?"];
 
   if (modelRange && impliedGrowth !== null) {
     const demanding = impliedGrowth > 0.2;
     modelOpinion = demanding
-      ? `The model describes a business with meaningful operating strengths, while the reference price also embeds demanding cash-flow growth under the stated assumptions. The educational conclusion is mixed rather than directional.`
-      : `The reference price embeds moderate cash-flow growth under the stated assumptions, but the wide model range shows that small changes in growth and discount rates materially affect the result.`;
+      ? "The model describes meaningful operating strengths while the reference price embeds demanding cash-flow growth under the stated assumptions. The educational conclusion is mixed rather than directional."
+      : "The reference price embeds moderate cash-flow growth under the stated assumptions, but the wide model range shows that small changes in growth and discount rates materially affect the result.";
     status = demanding ? "Mixed evidence" : "Partially supported";
   } else if (research.identity.symbol === "D05.SI") {
     modelOpinion = "The most important educational conclusion is methodological: a bank should not be forced through an industrial-company free-cash-flow model.";
     status = "Presently unanswerable";
+  } else if (narrative.articleCount) {
+    thesis = `${narrative.articleCount} recent public headlines from ${narrative.publisherCount} publishers provide a live macro lens. Coverage is most concentrated in ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample).`;
+    const challenging = (research.articles ?? []).find((article) => articleDirection(article.title) === "challenges");
+    counterThesis = challenging
+      ? `The sampled coverage also includes a counter-signal: “${challenging.title}” (${challenging.publisher}). A headline is a lead to investigate, not a verified financial fact.`
+      : "The headline sample contains little explicit counter-evidence. That absence may reflect source selection or recency rather than a genuinely low-risk business.";
+    modelOpinion = research.coverage.price
+      ? `This is presently a narrative-and-market-behaviour lesson, not a financial valuation. Public attention is measurable across ${narrative.publisherCount} publishers, and the available price series can describe realised volatility, but reported model-ready cash flows are missing. Longview therefore withholds a valuation range.`
+      : `This is presently a public-narrative lesson. Longview found ${narrative.articleCount} current headlines but no verified listed security or model-ready financial record, so it withholds stock-level valuation conclusions.`;
+    status = profile.hypothesis.trim()
+      ? narrative.hypothesisMatches > 0 || narrative.supports || narrative.challenges ? "Mixed evidence" : "Presently unanswerable"
+      : "Exploratory";
+    variablesToMonitor = [...new Set([
+      ...narrative.themes.slice(0, 3).map((item) => item.theme),
+      "Issuer filings and reported cash flow",
+      "Source diversity and narrative changes",
+    ])];
+    unresolvedQuestions = [
+      "Do the underlying articles cite primary evidence or repeat the same narrative?",
+      "Which current themes can be linked to revenue, margins or capital needs?",
+      "When will model-ready reported financial history become available?",
+    ];
   }
 
   return {
     title: `${research.identity.name} through a quant lens`,
-    dek: "An independent educational opinion that separates observed facts, deterministic calculations and model interpretation.",
+    dek: narrative.articleCount
+      ? `An independent educational opinion built from ${narrative.articleCount} current public headlines, available market history and explicitly withheld financial models.`
+      : "An independent educational opinion that separates observed facts, deterministic calculations and model interpretation.",
     coverage,
     hypothesisStatus: status,
     modelRange,
     impliedGrowth,
-    thesis: context?.support ?? "The available price record provides a starting point for studying historical behaviour and market expectations.",
-    counterThesis: context?.challenge ?? "Price history alone cannot establish business quality or a defensible valuation range.",
+    thesis,
+    counterThesis,
     modelOpinion,
-    variablesToMonitor: context?.monitor ?? ["Primary company disclosures", "Cash-flow evidence", "Sector conditions", "Data coverage"],
-    unresolvedQuestions: context?.questions ?? ["Are canonical fundamentals available?", "Which valuation method fits this business?", "What evidence could falsify the opening thesis?"],
+    variablesToMonitor,
+    unresolvedQuestions,
     evidence: genericEvidence(research, assumptions),
+    narrative,
   };
 }
-
