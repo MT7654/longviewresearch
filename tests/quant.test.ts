@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dcfPerShare, monteCarloValuation, relativeValue, reverseDcfGrowth, riskMetrics } from "../lib/quant";
+import { dcfPerShare, garch11, historicalTailRisk, monteCarloMarketRisk, monteCarloValuation, relativeValue, reverseDcfGrowth, riskMetrics } from "../lib/quant";
 
 const assumptions = {
   fcfPerShare: 5,
@@ -49,5 +49,30 @@ describe("historical risk metrics", () => {
       { date: "2025-04-01", close: 90 },
     ]);
     expect(result?.maxDrawdown).toBeCloseTo(-0.5);
+  });
+
+  const dailyHistory = Array.from({ length: 140 }, (_, index) => ({
+    date: `2025-${String(Math.floor(index / 28) + 1).padStart(2, "0")}-${String(index % 28 + 1).padStart(2, "0")}`,
+    close: 100 * Math.exp(index * 0.0005 + Math.sin(index / 5) * 0.035 + Math.sin(index / 17) * 0.02),
+  }));
+
+  it("calculates ordered historical tail-loss estimates", () => {
+    const result = historicalTailRisk(dailyHistory)!;
+    expect(result.var95).toBeGreaterThan(0);
+    expect(result.var99).toBeGreaterThanOrEqual(result.var95);
+    expect(result.expectedShortfall95).toBeGreaterThanOrEqual(result.var95);
+  });
+
+  it("fits a stationary GARCH(1,1) volatility model", () => {
+    const result = garch11(dailyHistory)!;
+    expect(result.persistence).toBeLessThan(1);
+    expect(result.currentVolatility).toBeGreaterThan(0);
+  });
+
+  it("produces reproducible Monte Carlo market-risk estimates", () => {
+    const first = monteCarloMarketRisk(dailyHistory, 252, 10, 1000, 42);
+    const second = monteCarloMarketRisk(dailyHistory, 252, 10, 1000, 42);
+    expect(first).toEqual(second);
+    expect(first!.var99).toBeGreaterThanOrEqual(first!.var95);
   });
 });

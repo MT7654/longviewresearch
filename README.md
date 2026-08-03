@@ -70,11 +70,14 @@ The app runs only the methods supported by the available evidence:
 - reverse discounted cash flow;
 - scenario DCF;
 - relative valuation;
-- seeded Monte Carlo sensitivity;
+- seeded Monte Carlo valuation sensitivity;
 - value, quality, momentum, and low-volatility proxies; and
-- historical return, volatility, and drawdown measures.
+- historical return, volatility, and drawdown measures;
+- GARCH(1,1) conditional-volatility estimation;
+- historical Value at Risk and expected shortfall; and
+- seeded Monte Carlo market-risk simulation.
 
-Every result now appears in a **Quant Playbook** that identifies the strategy, the question it answers, its current output, the correct interpretation, and its main failure mode. For a mature listed company with sufficient annual or trailing four-quarter public fundamentals, the valuation models run automatically. For a new listing, private-company query, or incomplete dataset, the lab instead measures the public narrative and the price history that actually exists, then explains why valuation is withheld. Advanced controls appear only when they have a real function. A bank sample demonstrates that a generic free-cash-flow DCF should not be forced onto the wrong business model.
+Every result now appears in a **Quant Playbook** that identifies the strategy, the question it answers, its current output, the correct interpretation, and its main failure mode. A separate **Quantitative Model Library** classifies ten model families as applied, eligible, or blocked for the current security. It includes DCF and reverse DCF, earnings multiples, residual income, CAPM/Fama–French regression, GARCH, VaR/expected shortfall, market-risk Monte Carlo, Black–Scholes–Merton/binomial trees, Heston, and cointegration. Longview never runs a model merely because it sounds sophisticated: an options-pricing model is not a common-stock valuation model, and a factor regression is not intrinsic value.
 
 ### 5. Independent Educational Opinion Piece
 
@@ -110,7 +113,11 @@ Before displaying a quant result, Longview inventories the resolved identity, pr
 
 - **Discounted cash flow** when positive cash flow per share, earnings and a reference price are available;
 - **earnings-multiple scenarios** when earnings exist but industrial free cash flow is unavailable or unsuitable, including the bank-learning path;
-- **narrative concentration and historical-risk methods** when no defensible financial valuation input exists.
+- **GARCH, historical VaR/expected shortfall and zero-drift market-risk Monte Carlo** whenever the price history meets the method’s minimum depth;
+- **narrative concentration and historical-risk methods** when no defensible financial valuation input exists;
+- **CAPM/Fama–French regression** only after aligned benchmark and factor-return data is available;
+- **residual income / justified price-to-book** only after bank book value, sustainable ROE, capital and credit data is available; and
+- **BSM, binomial and Heston** only for a specified derivative contract or calibrated option surface—not to manufacture a common-stock target.
 
 The data pipeline uses annual and trailing four-quarter public financial series. For US-listed companies, the server also attempts to fill missing fields from the SEC Company Facts XBRL API and labels successful SEC records as primary evidence.
 

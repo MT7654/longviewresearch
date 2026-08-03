@@ -68,13 +68,13 @@ export function monteCarloValuation(input: ValuationAssumptions, runs = 1600, se
   return { p10: percentile(0.1), median: percentile(0.5), p90: percentile(0.9), values, buckets };
 }
 
-function returns(series: PricePoint[]) {
+export function priceReturns(series: PricePoint[]) {
   return series.slice(1).map((point, index) => point.close / series[index].close - 1).filter(Number.isFinite);
 }
 
 export function riskMetrics(series: PricePoint[], periodsPerYear = 12) {
   if (series.length < 3) return null;
-  const periodic = returns(series);
+  const periodic = priceReturns(series);
   const mean = periodic.reduce((sum, value) => sum + value, 0) / periodic.length;
   const variance = periodic.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, periodic.length - 1);
   let peak = series[0].close;
@@ -91,6 +91,103 @@ export function riskMetrics(series: PricePoint[], periodsPerYear = 12) {
   const start = series[Math.max(0, series.length - 1 - lookback)];
   const momentum = start?.close && end?.close ? end.close / start.close - 1 : 0;
   return { annualReturn, volatility, sharpe: volatility ? annualReturn / volatility : 0, maxDrawdown: drawdown, momentum };
+}
+
+function percentile(sorted: number[], probability: number) {
+  if (!sorted.length) return 0;
+  const position = (sorted.length - 1) * probability;
+  const lower = Math.floor(position);
+  const weight = position - lower;
+  return sorted[lower] * (1 - weight) + (sorted[lower + 1] ?? sorted[lower]) * weight;
+}
+
+export function historicalTailRisk(series: PricePoint[]) {
+  const periodic = priceReturns(series);
+  if (periodic.length < 20) return null;
+  const sorted = [...periodic].sort((a, b) => a - b);
+  const cutoff95 = percentile(sorted, 0.05);
+  const cutoff99 = percentile(sorted, 0.01);
+  const tail95 = sorted.filter((value) => value <= cutoff95);
+  return {
+    observations: periodic.length,
+    var95: Math.max(0, -cutoff95),
+    var99: Math.max(0, -cutoff99),
+    expectedShortfall95: Math.max(0, -(tail95.reduce((sum, value) => sum + value, 0) / Math.max(1, tail95.length))),
+  };
+}
+
+export function garch11(series: PricePoint[], periodsPerYear = 252) {
+  const periodic = priceReturns(series);
+  if (periodic.length < 40) return null;
+  const mean = periodic.reduce((sum, value) => sum + value, 0) / periodic.length;
+  const residuals = periodic.map((value) => value - mean);
+  const unconditionalVariance = residuals.reduce((sum, value) => sum + value ** 2, 0) / periodic.length;
+  if (!Number.isFinite(unconditionalVariance) || unconditionalVariance <= 0) return null;
+
+  let best: { alpha: number; beta: number; omega: number; variance: number; score: number } | null = null;
+  for (let alpha = 0.03; alpha <= 0.2; alpha += 0.01) {
+    for (let beta = 0.7; beta <= 0.96; beta += 0.01) {
+      if (alpha + beta >= 0.995) continue;
+      const omega = unconditionalVariance * (1 - alpha - beta);
+      let variance = unconditionalVariance;
+      let score = 0;
+      for (let index = 1; index < residuals.length; index++) {
+        variance = omega + alpha * residuals[index - 1] ** 2 + beta * variance;
+        score += Math.log(variance) + residuals[index] ** 2 / variance;
+      }
+      if (!best || score < best.score) best = { alpha, beta, omega, variance, score };
+    }
+  }
+  if (!best) return null;
+
+  const nextVariance = best.omega + best.alpha * residuals.at(-1)! ** 2 + best.beta * best.variance;
+  let forecastVariance = nextVariance;
+  let averageVariance = 0;
+  for (let day = 0; day < 20; day++) {
+    averageVariance += forecastVariance;
+    forecastVariance = best.omega + (best.alpha + best.beta) * forecastVariance;
+  }
+  averageVariance /= 20;
+  return {
+    alpha: best.alpha,
+    beta: best.beta,
+    persistence: best.alpha + best.beta,
+    currentVolatility: Math.sqrt(nextVariance * periodsPerYear),
+    forecast20DayVolatility: Math.sqrt(averageVariance * periodsPerYear),
+    observations: periodic.length,
+  };
+}
+
+export function monteCarloMarketRisk(
+  series: PricePoint[],
+  periodsPerYear = 252,
+  horizonPeriods = 10,
+  runs = 5000,
+  seed = 7654,
+) {
+  const periodic = priceReturns(series);
+  if (periodic.length < 20) return null;
+  const mean = periodic.reduce((sum, value) => sum + value, 0) / periodic.length;
+  const garch = garch11(series, periodsPerYear);
+  const sampleVariance = periodic.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, periodic.length - 1);
+  const dailyVolatility = garch ? garch.currentVolatility / Math.sqrt(periodsPerYear) : Math.sqrt(sampleVariance);
+  const random = rng(seed);
+  const outcomes = Array.from({ length: runs }, () => {
+    let compounded = 1;
+    for (let period = 0; period < horizonPeriods; period++) {
+      compounded *= 1 + normal(random) * dailyVolatility;
+    }
+    return compounded - 1;
+  }).sort((a, b) => a - b);
+  return {
+    horizonPeriods,
+    observations: periodic.length,
+    medianReturn: percentile(outcomes, 0.5),
+    var95: Math.max(0, -percentile(outcomes, 0.05)),
+    var99: Math.max(0, -percentile(outcomes, 0.01)),
+    p05Return: percentile(outcomes, 0.05),
+    p95Return: percentile(outcomes, 0.95),
+  };
 }
 
 export function factorLens(price: number | null, assumptions: ValuationAssumptions, roic = 0, operatingMargin = 0, history: PricePoint[], periodsPerYear = 12) {

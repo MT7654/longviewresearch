@@ -61,6 +61,9 @@ import {
 import {
   dcfPerShare,
   factorLens,
+  garch11,
+  historicalTailRisk,
+  monteCarloMarketRisk,
   monteCarloValuation,
   relativeValue,
   reverseDcfGrowth,
@@ -141,6 +144,9 @@ function buildAnalysisSummary(
   relative: number | null,
   reverseGrowth: number | null,
   risk: ReturnType<typeof riskMetrics>,
+  garch: ReturnType<typeof garch11>,
+  tailRisk: ReturnType<typeof historicalTailRisk>,
+  marketRisk: ReturnType<typeof monteCarloMarketRisk>,
   narrative: NarrativeSignals,
 ): AnalysisSummary {
   const range = opinion.modelRange;
@@ -160,13 +166,19 @@ function buildAnalysisSummary(
     ? `${narrative.articleCount} current headlines from ${narrative.publisherCount} publishers concentrate most heavily on ${narrative.dominantTheme.toLowerCase()} (${Math.round(narrative.dominantShare * 100)}% of the sample). The scan maps what the public conversation emphasises; the linked articles still need to be checked against primary evidence.`
     : "The public scan returned too little current coverage to support a narrative conclusion. Absence of headlines is not evidence that the company is low-risk or unimportant.";
 
-  const quantFinding = opinion.valuationMethod === "Discounted cash flow" && valuation !== null && range
+  const valuationFinding = opinion.valuationMethod === "Discounted cash flow" && valuation !== null && range
     ? `A five-year free-cash-flow DCF produces ${money(research, valuation)}, while seeded sensitivity produces a ${money(research, range.low)}–${money(research, range.high)} range. Reverse DCF estimates that the current price requires ${reverseGrowth === null ? "an unresolved" : `${(reverseGrowth * 100).toFixed(1)}% annual`} free-cash-flow growth under the displayed discount and terminal-growth assumptions.`
     : opinion.valuationMethod === "Earnings-multiple scenario" && range
       ? `The extracted earnings data could not support an industrial-company DCF, so Longview selected an earnings-multiple scenario. The resulting range is ${money(research, range.low)}–${money(research, range.high)}, with a midpoint of ${money(research, range.midpoint)}. This answers how price compares under a stated earnings multiple; it does not establish intrinsic value.`
     : risk
       ? `No defensible financial valuation could be run. The supported market-behaviour model uses ${research.priceHistory.length} ${research.historyInterval ?? "monthly"} observations and measures ${(risk.volatility * 100).toFixed(1)}% annualised volatility with a ${(risk.maxDrawdown * 100).toFixed(1)}% maximum observed drawdown. These are historical descriptors, not fair value.`
       : "Neither model-ready fundamentals nor enough price history were available. Longview limits the quantitative conclusion to coverage and narrative measurements.";
+  const riskFinding = garch && tailRisk && marketRisk
+    ? ` Separately, GARCH(1,1) estimates ${(garch.currentVolatility * 100).toFixed(1)}% current annualised conditional volatility with ${garch.persistence.toFixed(2)} persistence. Historical 95% one-period VaR is ${(tailRisk.var95 * 100).toFixed(1)}%, while a seeded ${marketRisk.horizonPeriods}-period market-risk simulation estimates ${(marketRisk.var95 * 100).toFixed(1)}% VaR at 95%. These are loss-distribution estimates, not price targets.`
+    : tailRisk && marketRisk
+      ? ` Separately, historical 95% one-period VaR is ${(tailRisk.var95 * 100).toFixed(1)}%, while a seeded ${marketRisk.horizonPeriods}-period market-risk simulation estimates ${(marketRisk.var95 * 100).toFixed(1)}% VaR at 95%. The history is not deep enough for the app's GARCH fit.`
+      : "";
+  const quantFinding = `${valuationFinding}${riskFinding}`;
 
   const combinedFinding = range
     ? `${posture}. Secondary research supplies context and counter-questions; the valuation posture comes only from the deterministic model and its visible assumptions.`
@@ -303,6 +315,30 @@ function buildAnalysisSummary(
       limitation: "Withholding is deliberately conservative; it is not a view on company quality.",
     },
   ];
+  if (garch) methods.push({
+    name: "GARCH(1,1)",
+    strategy: "Conditional-volatility modelling",
+    question: "Does recent volatility update the estimate of near-term market variability?",
+    result: `${(garch.currentVolatility * 100).toFixed(1)}% current annualised volatility · ${garch.persistence.toFixed(2)} persistence`,
+    interpretation: "Persistence near one means volatility shocks tend to decay slowly rather than disappear immediately.",
+    limitation: "A simple Gaussian GARCH fit can understate jumps, asymmetry and very heavy tails.",
+  });
+  if (tailRisk) methods.push({
+    name: "Historical VaR + expected shortfall",
+    strategy: "Empirical tail-risk measurement",
+    question: "How severe were the poorer returns in the observed sample?",
+    result: `${(tailRisk.var95 * 100).toFixed(1)}% 95% VaR · ${(tailRisk.expectedShortfall95 * 100).toFixed(1)}% expected shortfall`,
+    interpretation: "VaR marks a historical loss threshold; expected shortfall averages observations beyond that threshold.",
+    limitation: "The sample may omit a future crisis and does not provide a personal loss or suitability assessment.",
+  });
+  if (marketRisk) methods.push({
+    name: "Market-risk Monte Carlo",
+    strategy: "Stochastic return simulation",
+    question: `What loss distribution follows from the observed return and volatility process over ${marketRisk.horizonPeriods} periods?`,
+    result: `${(marketRisk.var95 * 100).toFixed(1)}% 95% VaR · ${(marketRisk.var99 * 100).toFixed(1)}% 99% VaR`,
+    interpretation: "This stress-tests market-price uncertainty; it is distinct from the DCF assumption simulation.",
+    limitation: "The result inherits its distribution and volatility assumptions and is not a forecast probability.",
+  });
 
   return { posture, postureDetail, researchFinding, quantFinding, combinedFinding, sectorSummary, sectorMeaning, sectorSignals, methods };
 }
@@ -501,6 +537,12 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
     [research, assumptions, periodsPerYear],
   );
   const risk = useMemo(() => research ? riskMetrics(research.priceHistory, periodsPerYear) : null, [research, periodsPerYear]);
+  const garch = useMemo(() => research ? garch11(research.priceHistory, periodsPerYear) : null, [research, periodsPerYear]);
+  const tailRisk = useMemo(() => research ? historicalTailRisk(research.priceHistory) : null, [research]);
+  const marketRisk = useMemo(
+    () => research ? monteCarloMarketRisk(research.priceHistory, periodsPerYear, research.historyInterval === "daily" ? 10 : 3) : null,
+    [research, periodsPerYear],
+  );
   const narrative = useMemo(
     () => analyzeNarrative(research?.articles ?? [], profile.hypothesis),
     [research, profile.hypothesis],
@@ -515,9 +557,9 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
   );
   const analysis = useMemo(
     () => research && opinion
-      ? buildAnalysisSummary(research, opinion, valuation, relative, reverseGrowth, risk, narrative)
+      ? buildAnalysisSummary(research, opinion, valuation, relative, reverseGrowth, risk, garch, tailRisk, marketRisk, narrative)
       : null,
-    [research, opinion, valuation, relative, reverseGrowth, risk, narrative],
+    [research, opinion, valuation, relative, reverseGrowth, risk, garch, tailRisk, marketRisk, narrative],
   );
   const activeQuizItems = useMemo(
     () => research && analysis ? buildContextualQuiz(research, analysis, reverseGrowth, risk, narrative) : [],
@@ -786,7 +828,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
             <Lightbulb />
             <div><small>YOUR STARTING POINT</small><strong>{prompt.startingPoint}</strong><p>{prompt.emphasis}</p></div>
           </div>
-          <ModelSelectionPanel research={research} opinion={opinion} />
+          <ModelSelectionPanel research={research} opinion={opinion} garch={garch} />
           <div className="roadmap-grid">
             <RoadmapCard number="01" icon={<Database />} title="Verify the evidence boundary" detail="Separate available observations from missing fundamentals and demonstration data." learning="Source quality before conclusions" />
             <RoadmapCard number="02" icon={<Scale />} title="Build the counter-case" detail="Look for the strongest reason the opening idea could be incomplete." learning="Falsification, not confirmation" />
@@ -822,7 +864,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           intro="Each item is labelled by what it is, where it came from and whether it supports, challenges or limits the opening idea."
         >
           <HypothesisLedger profile={profile} opinion={opinion} />
-          <ModelSelectionPanel research={research} opinion={opinion} />
+          <ModelSelectionPanel research={research} opinion={opinion} garch={garch} />
           <NarrativeBriefing narrative={narrative} articles={research.articles ?? []} />
           <div className="evidence-grid">
             {opinion.evidence.map((item) => (
@@ -867,6 +909,7 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
           dark
         >
           <QuantMethodGuide analysis={analysis} />
+          <ModelCatalogue research={research} opinion={opinion} garch={garch} tailRisk={tailRisk} />
           <div className="quant-readout-grid">
             {opinion.valuationMethod === "Discounted cash flow" && valuation !== null ? <>
               <QuantReadout label="Market-implied FCF growth" value={reverseGrowth === null ? "Unavailable" : `${(reverseGrowth * 100).toFixed(1)}%`} detail="Solved backwards from the reference price" tone="lime" />
@@ -975,6 +1018,8 @@ export function ResearchWorkspace({ symbol }: { symbol: string }) {
               <p className="micro-note">*Arithmetic annualisation. Short histories create unstable estimates and do not predict future outcomes.</p>
             </article>
           </div>
+
+          <RiskModelPanel research={research} garch={garch} tailRisk={tailRisk} marketRisk={marketRisk} />
 
           {opinion.valuationMethod === "Discounted cash flow" && valuation !== null ? (
             <details className="advanced-lab">
@@ -1296,7 +1341,15 @@ function QuantMethodGuide({ analysis }: { analysis: AnalysisSummary }) {
   );
 }
 
-function ModelSelectionPanel({ research, opinion }: { research: SecurityResearch; opinion: EducationalOpinion }) {
+function ModelSelectionPanel({
+  research,
+  opinion,
+  garch,
+}: {
+  research: SecurityResearch;
+  opinion: EducationalOpinion;
+  garch: ReturnType<typeof garch11>;
+}) {
   const data = [
     { label: "Identity", value: research.coverage.identity ? research.identity.symbol : "Missing", available: research.coverage.identity },
     { label: "Price history", value: `${research.priceHistory.length} observations`, available: research.coverage.history },
@@ -1307,18 +1360,170 @@ function ModelSelectionPanel({ research, opinion }: { research: SecurityResearch
   const reason = opinion.valuationMethod === "Discounted cash flow"
     ? "Positive free cash flow per share, earnings, price and sufficient history support DCF, reverse DCF, relative valuation and risk methods."
     : opinion.valuationMethod === "Earnings-multiple scenario"
-      ? "Reported earnings are available, but industrial free cash flow is missing or unsuitable. Longview therefore selects an earnings-multiple scenario plus risk methods."
-      : "No model-ready cash flow or earnings basis was found. Longview selects narrative concentration and historical market-behaviour methods only.";
+      ? "Reported earnings are available, but industrial free cash flow is missing or unsuitable. Longview therefore selects an earnings-multiple scenario plus supported time-series risk models."
+      : "No model-ready cash flow or earnings basis was found. Longview selects narrative concentration and supported time-series risk models without manufacturing a fair value.";
   return (
     <section className="model-selection-panel">
       <header>
         <div><Database /><span>BACKEND DATA INVENTORY</span></div>
-        <strong>Selected model: {opinion.valuationMethod ?? "Narrative + historical risk only"}</strong>
+        <strong>Selected stack: {opinion.valuationMethod ?? "No financial valuation"} · {garch ? "GARCH + VaR + Monte Carlo" : "Historical risk"}</strong>
       </header>
       <div className="model-data-grid">
         {data.map((item) => <p className={item.available ? "available" : "missing"} key={item.label}><small>{item.label}</small><strong>{item.value}</strong></p>)}
       </div>
       <footer><strong>Why this model was selected</strong><p>{reason}</p></footer>
+    </section>
+  );
+}
+
+type ModelStatus = "APPLIED" | "ELIGIBLE" | "BLOCKED";
+
+function ModelCatalogue({
+  research,
+  opinion,
+  garch,
+  tailRisk,
+}: {
+  research: SecurityResearch;
+  opinion: EducationalOpinion;
+  garch: ReturnType<typeof garch11>;
+  tailRisk: ReturnType<typeof historicalTailRisk>;
+}) {
+  const hasHistory = research.priceHistory.length >= 20;
+  const models: Array<{ family: string; name: string; status: ModelStatus; purpose: string; reason: string }> = [
+    {
+      family: "Fundamental valuation",
+      name: "DCF / reverse DCF",
+      status: opinion.valuationMethod === "Discounted cash flow" ? "APPLIED" : "BLOCKED",
+      purpose: "Values operating free cash flow and tests the growth implied by price.",
+      reason: opinion.valuationMethod === "Discounted cash flow" ? "Positive model-ready FCF and a reference price were found." : "Needs model-ready operating cash flow, debt, shares and a suitable company structure.",
+    },
+    {
+      family: "Relative valuation",
+      name: "Earnings multiple",
+      status: opinion.valuationMethod === "Earnings-multiple scenario" ? "APPLIED" : research.fundamentals.eps ? "ELIGIBLE" : "BLOCKED",
+      purpose: "Compares price with reported earnings under an explicit multiple range.",
+      reason: research.fundamentals.eps ? "Reported EPS is available; peer quality remains a limitation." : "Reported EPS was not found.",
+    },
+    {
+      family: "Bank valuation",
+      name: "Residual income / justified P-B",
+      status: "BLOCKED",
+      purpose: "Connects bank value to book equity, sustainable ROE and cost of equity.",
+      reason: "Requires book value, capital ratios, sustainable ROE and credit-loss inputs not yet present in the feed.",
+    },
+    {
+      family: "Asset pricing",
+      name: "CAPM / Fama–French factor regression",
+      status: hasHistory ? "ELIGIBLE" : "BLOCKED",
+      purpose: "Estimates market and factor exposures rather than intrinsic value.",
+      reason: hasHistory ? "Stock history exists; benchmark and dated factor-return series are still needed for a valid regression." : "Needs aligned stock, benchmark and factor-return histories.",
+    },
+    {
+      family: "Time-series volatility",
+      name: "GARCH(1,1)",
+      status: garch ? "APPLIED" : "BLOCKED",
+      purpose: "Models volatility clustering and updates conditional volatility.",
+      reason: garch ? `${garch.observations} returns support the current fit.` : "Longview requires at least 40 return observations.",
+    },
+    {
+      family: "Tail risk",
+      name: "Historical VaR / expected shortfall",
+      status: tailRisk ? "APPLIED" : "BLOCKED",
+      purpose: "Measures the poorer tail of the observed return distribution.",
+      reason: tailRisk ? `${tailRisk.observations} observed returns support an empirical estimate.` : "Longview requires at least 20 return observations.",
+    },
+    {
+      family: "Market-risk simulation",
+      name: "Monte Carlo returns",
+      status: hasHistory ? "APPLIED" : "BLOCKED",
+      purpose: "Simulates a transparent market-return distribution over a fixed horizon.",
+      reason: hasHistory ? "Uses observed return and volatility inputs with a reproducible seed." : "Needs a usable price-return history.",
+    },
+    {
+      family: "Derivatives pricing",
+      name: "Black–Scholes–Merton / binomial tree",
+      status: "BLOCKED",
+      purpose: "Prices a specified option contract; it does not value the common stock itself.",
+      reason: "Needs strike, expiry, option type, risk-free rate, dividend yield and contract-level volatility.",
+    },
+    {
+      family: "Stochastic-volatility derivatives",
+      name: "Heston",
+      status: "BLOCKED",
+      purpose: "Prices derivatives with stochastic volatility and a volatility smile.",
+      reason: "Needs an option-price surface across strikes and maturities for calibration.",
+    },
+    {
+      family: "Relative-value trading",
+      name: "Cointegration / pairs model",
+      status: "BLOCKED",
+      purpose: "Tests whether a stock and a defensible peer basket share a stable long-run relationship.",
+      reason: "Needs an explicitly selected peer set and aligned histories; automatic ticker similarity is not enough.",
+    },
+  ];
+  return (
+    <section className="model-catalogue">
+      <header>
+        <div><Binary /><span>QUANTITATIVE MODEL LIBRARY</span></div>
+        <h3>Real models, selected by question and evidence—not by novelty.</h3>
+        <p><strong>Applied</strong> means the app ran the model. <strong>Eligible</strong> means the model is relevant but still needs a named external dataset. <strong>Blocked</strong> means required inputs are absent or the model answers the wrong question.</p>
+      </header>
+      <div>
+        {models.map((model) => (
+          <article key={model.name}>
+            <small>{model.family}</small>
+            <span className={`model-status status-${model.status.toLowerCase()}`}>{model.status}</span>
+            <h4>{model.name}</h4>
+            <p>{model.purpose}</p>
+            <footer>{model.reason}</footer>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RiskModelPanel({
+  research,
+  garch,
+  tailRisk,
+  marketRisk,
+}: {
+  research: SecurityResearch;
+  garch: ReturnType<typeof garch11>;
+  tailRisk: ReturnType<typeof historicalTailRisk>;
+  marketRisk: ReturnType<typeof monteCarloMarketRisk>;
+}) {
+  return (
+    <section className="risk-model-panel">
+      <header>
+        <div><Gauge /><span>MARKET-RISK MODEL STACK</span></div>
+        <h3>Volatility, tail loss and simulation answer risk questions—not fair value.</h3>
+      </header>
+      <div>
+        <article>
+          <small>GARCH(1,1)</small>
+          <strong>{garch ? `${(garch.currentVolatility * 100).toFixed(1)}%` : "Unavailable"}</strong>
+          <p>{garch ? `Current annualised conditional volatility; persistence ${garch.persistence.toFixed(2)}.` : "At least 40 return observations are required."}</p>
+        </article>
+        <article>
+          <small>HISTORICAL 95% VAR</small>
+          <strong>{tailRisk ? `${(tailRisk.var95 * 100).toFixed(1)}%` : "Unavailable"}</strong>
+          <p>{tailRisk ? `One ${research.historyInterval === "daily" ? "day" : "period"} historical loss threshold; expected shortfall ${(tailRisk.expectedShortfall95 * 100).toFixed(1)}%.` : "At least 20 return observations are required."}</p>
+        </article>
+        <article>
+          <small>MONTE CARLO 95% VAR</small>
+          <strong>{marketRisk ? `${(marketRisk.var95 * 100).toFixed(1)}%` : "Unavailable"}</strong>
+          <p>{marketRisk ? `${marketRisk.horizonPeriods}-${research.historyInterval === "daily" ? "day" : "period"} seeded market-risk simulation; 99% VaR ${(marketRisk.var99 * 100).toFixed(1)}%.` : "A usable return series is required."}</p>
+        </article>
+        <article>
+          <small>OPTIONS MODELS</small>
+          <strong>Not applicable</strong>
+          <p>BSM, binomial and Heston require a specified option contract or option surface. They cannot manufacture a common-stock target price.</p>
+        </article>
+      </div>
+      <footer>VaR is reported only as a percentage of the modelled price process. Longview does not calculate a user’s personal exposure, recommend position size or assess suitability.</footer>
     </section>
   );
 }
